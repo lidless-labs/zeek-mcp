@@ -1,0 +1,3 @@
+{"ts":1706745630.000000,"uid":"C6a2b3c4d5","note":"Scan::Port_Scan","msg":"192.168.1.50 scanned at least 50 unique ports of host 10.0.0.1","src":"192.168.1.50","dst":"10.0.0.1","p":445,"actions":["Notice::ACTION_LOG"]}
+{"ts":1706745601.000000,"uid":"C12a2b3c4d5","note":"SSL::Invalid_Server_Cert","msg":"SSL certificate validation failed with self signed certificate","src":"192.168.1.200","dst":"45.33.32.156","p":443,"actions":["Notice::ACTION_LOG"]}
+{"ts":1706745650.000000,"note":"Weird::Activity","msg":"Unusual DNS query pattern detected from 192.168.1.200","src":"192.168.1.200","actions":["Notice::ACTION_LOG"]}

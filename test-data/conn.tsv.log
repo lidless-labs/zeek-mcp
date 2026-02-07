@@ -1,0 +1,12 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	conn
+#open	2024-02-01-00-00-00
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	conn_state	history	orig_pkts	resp_pkts
+#types	time	string	addr	port	addr	port	enum	string	interval	count	count	string	string	count	count
+1706745600.000000	C1a2b3c4d5	192.168.1.100	52341	93.184.216.34	443	tcp	ssl	1.234	512	2048	SF	ShADadFf	10	15
+1706745601.000000	C2a2b3c4d5	192.168.1.100	52342	10.0.0.50	22	tcp	ssh	3600.5	15000	8000	SF	ShADadFf	200	150
+1706745602.000000	C3a2b3c4d5	10.0.0.25	12345	192.168.1.100	80	tcp	http	0.05	256	4096	SF	ShADadFf	5	8
+#close	2024-02-01-00-01-00
