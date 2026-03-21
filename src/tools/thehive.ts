@@ -18,6 +18,7 @@ async function theHiveRequest(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs = 30000,
 ): Promise<{ status: number; data: unknown }> {
   const url = `${config.url}${path}`;
   const headers: Record<string, string> = {
@@ -25,14 +26,22 @@ async function theHiveRequest(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  const data = await response.json().catch(() => null);
-  return { status: response.status, data };
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    const data = await response.json().catch(() => null);
+    return { status: response.status, data };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function registerTheHiveTools(server: McpServer): void {
@@ -260,6 +269,9 @@ export function registerTheHiveTools(server: McpServer): void {
         }
         if (params.severity !== undefined) {
           filters.push({ _name: "filter", _field: "severity", _value: params.severity });
+        }
+        if (params.status) {
+          filters.push({ _name: "filter", _field: "status", _value: params.status });
         }
         if (params.tags && params.tags.length > 0) {
           for (const tag of params.tags) {

@@ -41,8 +41,12 @@ export function registerBaselineTools(
 
         // Time span
         const timestamps = records.map((r) => r.ts).sort((a, b) => a - b);
-        const timeSpanSeconds = timestamps[timestamps.length - 1] - timestamps[0];
-        const connectionsPerMinute = records.length / (timeSpanSeconds / 60);
+        const timeSpanSeconds = timestamps.length >= 2
+          ? timestamps[timestamps.length - 1] - timestamps[0]
+          : 0;
+        const connectionsPerMinute = timeSpanSeconds > 0
+          ? records.length / (timeSpanSeconds / 60)
+          : 0;
 
         // Hourly distribution
         const hourCounts: number[] = new Array(24).fill(0);

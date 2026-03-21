@@ -402,8 +402,8 @@ export const LOG_FIELD_DEFINITIONS: Record<LogType, LogFieldDef[]> = {
   dhcp: [
     { name: "ts", type: "time", description: "Timestamp" },
     { name: "uid", type: "string", description: "Connection UID" },
-    { name: "id.orig_h", type: "addr", description: "Client IP" },
-    { name: "id.resp_h", type: "addr", description: "Server IP" },
+    { name: "client_addr", type: "addr", description: "Client IP address" },
+    { name: "server_addr", type: "addr", description: "DHCP server IP" },
     { name: "mac", type: "string", description: "Client MAC address" },
     { name: "assigned_addr", type: "addr", description: "Assigned IP address" },
     { name: "lease_time", type: "interval", description: "Lease duration in seconds" },

@@ -25,11 +25,16 @@ function execCommand(cmd: string, timeoutMs = 60000): Promise<{ stdout: string; 
     child_process.exec(cmd, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout?.toString() ?? "",
-        stderr: stderr?.toString() ?? "",
-        code: error?.code ?? 0,
+        stderr: stderr?.toString() ?? (error ? error.message : ""),
+        code: typeof error?.code === "number" ? error.code : (error ? 1 : 0),
       });
     });
   });
+}
+
+// Validate script names to prevent command injection
+function validateScriptName(script: string): boolean {
+  return /^[a-zA-Z0-9_.\-\/]+$/.test(script);
 }
 
 export function registerPcapTools(server: McpServer): void {
@@ -99,9 +104,31 @@ export function registerPcapTools(server: McpServer): void {
     },
     async (params) => {
       try {
+        // Validate scripts to prevent command injection
+        if (params.scripts) {
+          for (const script of params.scripts) {
+            if (!validateScriptName(script)) {
+              return {
+                content: [{ type: "text" as const, text: `Invalid script name: "${script}". Only alphanumeric, underscore, dash, dot, and slash allowed.` }],
+                isError: true,
+              };
+            }
+          }
+        }
+
         const pcapPath = params.filename.startsWith("/")
           ? params.filename
           : path.join(config.pcapDir, params.filename);
+
+        // Prevent path traversal
+        const resolvedPcap = path.resolve(pcapPath);
+        const resolvedDir = path.resolve(config.pcapDir);
+        if (!params.filename.startsWith("/") && !resolvedPcap.startsWith(resolvedDir + path.sep) && resolvedPcap !== resolvedDir) {
+          return {
+            content: [{ type: "text" as const, text: `Path traversal blocked: "${params.filename}"` }],
+            isError: true,
+          };
+        }
 
         if (!fs.existsSync(pcapPath)) {
           return {

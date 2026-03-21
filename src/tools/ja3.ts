@@ -2,11 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
 import { executeQuery, type FilterDef } from "../query/engine.js";
-import { topN, groupBy, countUnique } from "../query/aggregation.js";
-
 // Known malicious/suspicious JA3 hashes
 // Source: https://sslbl.abuse.ch/ja3-fingerprints/ and community research
-const KNOWN_MALICIOUS_JA3: Record<string, string> = {
+export const KNOWN_MALICIOUS_JA3: Record<string, string> = {
   "e7d705a3286e19ea42f587b344ee6865": "Tofsee Botnet",
   "6734f37431670b3ab4292b8f60f29984": "Tofsee Botnet",
   "4d7a28d6f2263ed61de88ca66eb011e3": "TrickBot",

@@ -171,7 +171,8 @@ export function registerMispTools(server: McpServer): void {
 
             try {
               const result = await mispRequest(config, "POST", "/attributes/restSearch", searchBody);
-              const attrs = ((result.data as any)?.response?.Attribute ?? []) as Array<Record<string, unknown>>;
+              const responseData = result.data as { response?: { Attribute?: unknown[] } };
+              const attrs = (responseData?.response?.Attribute ?? []) as Array<Record<string, unknown>>;
 
               return {
                 value: indicator.value,

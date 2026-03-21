@@ -1,25 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 import { readLogFile } from "../src/parser/index.js";
+import { KNOWN_MALICIOUS_JA3 } from "../src/tools/ja3.js";
 
 const TEST_DATA_DIR = path.join(process.cwd(), "test-data");
-
-// Known malicious JA3 hashes (same as in ja3.ts)
-const KNOWN_MALICIOUS_JA3: Record<string, string> = {
-  "e7d705a3286e19ea42f587b344ee6865": "Tofsee Botnet",
-  "6734f37431670b3ab4292b8f60f29984": "Tofsee Botnet",
-  "4d7a28d6f2263ed61de88ca66eb011e3": "TrickBot",
-  "c12f54a3f91dc7bafd92cb59fe009a35": "AsyncRAT",
-  "72a589da586844d7f0818ce684948eea": "Metasploit Meterpreter",
-  "3b5074b1b5d032e5620f69f9f700ff0e": "CobaltStrike",
-  "a0e9f5d64349fb13191bc781f81f42e1": "CobaltStrike",
-  "b742b407517bac9536a77a7b0fee28e9": "Dridex",
-  "e35df3e00ca4ef31d42b34bebaa2f86e": "QakBot",
-  "51c64c77e60f3980eea90869b68c58a8": "IcedID",
-  "ec74a5c51106f0419184d0dd08fb05bc": "Emotet",
-  "f436b9416f37d134cadd04886327d3e8": "Emotet (2022)",
-  "3e5820e6b1b6e3c5aba2ca0e055c581b": "Bumblebee Loader",
-};
 
 describe("JA3 fingerprint analysis", () => {
   it("should have known malicious hashes database", () => {

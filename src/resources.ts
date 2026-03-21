@@ -1,6 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LOG_FIELD_DEFINITIONS, type LogType } from "./types.js";
-import * as fs from "node:fs";
 
 export function registerResources(server: McpServer): void {
   server.resource(
