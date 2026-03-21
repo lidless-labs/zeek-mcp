@@ -25,3 +25,11 @@ export function getConfig(): ZeekConfig {
 
   return { logDir, logArchive, logFormat, maxResults };
 }
+
+/**
+ * Suricata configuration is handled by getSuricataConfig() in tools/suricata.ts.
+ * Environment variables:
+ * - SURICATA_EVE_LOG: Path to eve.json (default: /opt/nids/suricata/logs/eve.json)
+ * - SURICATA_FAST_LOG: Path to fast.log (default: /opt/nids/suricata/logs/fast.log)
+ * - SURICATA_RULES_DIR: Path to rules directory (default: /opt/nids/suricata/rules)
+ */

@@ -266,7 +266,11 @@ export type LogType =
   | "smtp"
   | "ssh"
   | "dpd"
-  | "software";
+  | "software"
+  | "dhcp"
+  | "ntp"
+  | "ocsp"
+  | "websocket";
 
 export interface LogFieldDef {
   name: string;
@@ -394,5 +398,37 @@ export const LOG_FIELD_DEFINITIONS: Record<LogType, LogFieldDef[]> = {
     { name: "name", type: "string", description: "Software name" },
     { name: "version.major", type: "count", description: "Major version" },
     { name: "version.minor", type: "count", description: "Minor version" },
+  ],
+  dhcp: [
+    { name: "ts", type: "time", description: "Timestamp" },
+    { name: "uid", type: "string", description: "Connection UID" },
+    { name: "client_addr", type: "addr", description: "Client IP address" },
+    { name: "server_addr", type: "addr", description: "DHCP server IP" },
+    { name: "mac", type: "string", description: "Client MAC address" },
+    { name: "assigned_addr", type: "addr", description: "Assigned IP address" },
+    { name: "lease_time", type: "interval", description: "Lease duration in seconds" },
+    { name: "host_name", type: "string", description: "Client hostname" },
+    { name: "msg_types", type: "vector", description: "DHCP message types" },
+  ],
+  ntp: [
+    { name: "ts", type: "time", description: "Timestamp" },
+    { name: "uid", type: "string", description: "Connection UID" },
+    { name: "id.orig_h", type: "addr", description: "Source IP" },
+    { name: "id.resp_h", type: "addr", description: "Destination IP" },
+    { name: "version", type: "count", description: "NTP version" },
+    { name: "mode", type: "count", description: "NTP mode" },
+  ],
+  ocsp: [
+    { name: "ts", type: "time", description: "Timestamp" },
+    { name: "id", type: "string", description: "File ID" },
+    { name: "hashAlgorithm", type: "string", description: "Hash algorithm used" },
+    { name: "issuerNameHash", type: "string", description: "Issuer name hash" },
+    { name: "certStatus", type: "string", description: "Certificate status" },
+  ],
+  websocket: [
+    { name: "ts", type: "time", description: "Timestamp" },
+    { name: "uid", type: "string", description: "Connection UID" },
+    { name: "id.orig_h", type: "addr", description: "Source IP" },
+    { name: "id.resp_h", type: "addr", description: "Destination IP" },
   ],
 };

@@ -1,6 +1,6 @@
 {
   "name": "zeek-mcp",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "MCP server for Zeek network analysis framework - query and analyze Zeek logs via AI",
   "type": "module",
   "main": "dist/index.js",

@@ -3,6 +3,47 @@ import { z } from "zod";
 
 export function registerPrompts(server: McpServer): void {
   server.prompt(
+    "triage-alert",
+    "Triage a Suricata alert by cross-referencing with Zeek logs for full context. Determines if the alert is a true positive, false positive, or needs escalation.",
+    {
+      signatureId: z
+        .string()
+        .optional()
+        .describe("Suricata signature ID (SID) to triage"),
+      srcIp: z
+        .string()
+        .optional()
+        .describe("Source IP from the alert"),
+    },
+    ({ signatureId, srcIp }) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: `Triage the following Suricata alert${signatureId ? ` (SID: ${signatureId})` : ""}${srcIp ? ` from source IP ${srcIp}` : ""}:
+
+Follow this triage workflow:
+
+1. **Get alert details**: Run suricata_query_alerts${signatureId ? ` with signatureId=${signatureId}` : ""}${srcIp ? ` with srcIp=${srcIp}` : ""} to get the full alert context
+2. **Cross-reference with Zeek**: Run suricata_correlate_zeek to get correlation suggestions, then execute the suggested Zeek queries
+3. **Investigate the source host**: Run zeek_investigate_host for the source IP
+4. **Check for patterns**: Look for repeated alerts, related activity, or coordinated behavior
+5. **DNS context**: Run zeek_query_dns for the source IP to check domain queries
+6. **DHCP/Asset context**: Run zeek_dhcp_asset_map to identify what device triggered the alert
+7. **Determine verdict**:
+   - TRUE POSITIVE: Alert matches real malicious activity confirmed by Zeek context
+   - FALSE POSITIVE: Alert triggered on legitimate traffic (explain why)
+   - NEEDS ESCALATION: Insufficient data to determine, or activity is suspicious but not conclusive
+8. **Recommend actions**: Block IP, add exception, investigate further, or dismiss`,
+          },
+        },
+      ],
+    }),
+  );
+
+
+  server.prompt(
     "investigate-host",
     "Full host investigation workflow - cross-log analysis, anomaly identification, and connection profiling for a specific IP address.",
     {

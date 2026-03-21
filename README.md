@@ -5,24 +5,30 @@
 [![MCP](https://img.shields.io/badge/MCP-1.x-purple)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An MCP (Model Context Protocol) server for [Zeek](https://zeek.org/) (formerly Bro), the powerful network analysis framework. Provides intelligent log parsing, querying, and analysis over Zeek's rich log ecosystem, enabling LLMs to query connection logs, DNS activity, HTTP requests, SSL certificates, file extractions, and security notices.
+An MCP (Model Context Protocol) server for [Zeek](https://zeek.org/) and [Suricata](https://suricata.io/), providing intelligent log parsing, querying, and analysis over network security monitoring data. Enables LLMs to query connection logs, DNS activity, HTTP requests, SSL certificates, file extractions, security notices, IDS alerts, and cross-reference findings between both sensors.
 
 ## Features
 
-- **18 tools** for querying and analyzing Zeek logs
+- **25 tools** for querying and analyzing Zeek + Suricata logs
 - **2 resources** for log type metadata and sensor stats
-- **3 prompts** for guided investigation workflows
+- **4 prompts** for guided investigation workflows
 - **Dual format support** - JSON and TSV (Zeek's native tab-separated format)
-- **CIDR matching** - filter by IP ranges (10.0.0.0/8, 192.168.1.0/24)
-- **Wildcard matching** - search domains and URIs with patterns (*.evil.com)
-- **Analytics** - Shannon entropy for DNS tunneling detection, beaconing analysis, anomaly detection
-- **Compressed log support** - reads .gz archived logs
-- **Date-based rotation** - navigates Zeek's archived log directories by date
+- **Suricata integration** - Query eve.json alerts, cross-correlate with Zeek, engine stats
+- **CIDR matching** - Filter by IP ranges (10.0.0.0/8, 192.168.1.0/24)
+- **IPv6 support** - Full IPv6 CIDR matching
+- **Wildcard matching** - Search domains and URIs with patterns (*.evil.com)
+- **Beaconing detection** - Statistical C2 beacon analysis with jitter scoring
+- **Anomaly detection** - Port scan, data exfiltration, and unusual port detection
+- **DNS tunneling detection** - Shannon entropy analysis with encoding detection
+- **DHCP asset mapping** - MAC-to-IP/hostname device inventory
+- **Compressed log support** - Reads .gz archived logs
+- **Date-based rotation** - Navigates Zeek's archived log directories by date
 
 ## Prerequisites
 
 - Node.js 20+
 - Zeek sensor generating logs (JSON or TSV format)
+- Suricata (optional, for IDS alert correlation)
 
 ## Installation
 
@@ -35,7 +41,7 @@ npm run build
 
 ## Configuration
 
-Set environment variables before running:
+### Zeek
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -44,11 +50,17 @@ Set environment variables before running:
 | `ZEEK_LOG_FORMAT` | `json` | Log format: `json` or `tsv` |
 | `ZEEK_MAX_RESULTS` | `1000` | Maximum results per query |
 
+### Suricata
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SURICATA_EVE_LOG` | `/opt/nids/suricata/logs/eve.json` | Path to Suricata eve.json |
+| `SURICATA_FAST_LOG` | `/opt/nids/suricata/logs/fast.log` | Path to Suricata fast.log |
+| `SURICATA_RULES_DIR` | `/opt/nids/suricata/rules` | Path to Suricata rules directory |
+
 ## Usage
 
 ### Claude Desktop
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
 
 ```json
 {
@@ -57,8 +69,9 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
       "command": "node",
       "args": ["/path/to/zeek-mcp/dist/index.js"],
       "env": {
-        "ZEEK_LOG_DIR": "/opt/zeek/logs/current",
-        "ZEEK_LOG_FORMAT": "json"
+        "ZEEK_LOG_DIR": "/opt/nids/zeek/logs",
+        "ZEEK_LOG_FORMAT": "tsv",
+        "SURICATA_EVE_LOG": "/opt/nids/suricata/logs/eve.json"
       }
     }
   }
@@ -68,7 +81,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ### Standalone
 
 ```bash
-ZEEK_LOG_DIR=/opt/zeek/logs/current node dist/index.js
+ZEEK_LOG_DIR=/opt/nids/zeek/logs ZEEK_LOG_FORMAT=tsv node dist/index.js
 ```
 
 ### Development
@@ -84,7 +97,7 @@ ZEEK_LOG_DIR=./test-data npm run dev
 | Tool | Description |
 |------|-------------|
 | `zeek_query_connections` | Search connection logs with flexible filters (CIDR, protocol, duration, bytes) |
-| `zeek_connection_summary` | Statistical summary - top talkers, services, bytes, connection counts |
+| `zeek_connection_summary` | Statistical summary: top talkers, services, bytes, connection counts |
 | `zeek_long_connections` | Find long-lived connections (potential C2 beacons, tunnels) |
 
 ### DNS Analysis
@@ -129,6 +142,13 @@ ZEEK_LOG_DIR=./test-data npm run dev
 | `zeek_query_ssh` | Search SSH connections by auth status, direction, client/server |
 | `zeek_ssh_bruteforce` | Detect SSH brute force attempts exceeding a failure threshold |
 
+### DHCP & Asset Discovery
+
+| Tool | Description |
+|------|-------------|
+| `zeek_query_dhcp` | Search DHCP logs for lease assignments and device discovery |
+| `zeek_dhcp_asset_map` | Build MAC-to-IP/hostname asset map for network inventory |
+
 ### Cross-Log Investigation
 
 | Tool | Description |
@@ -142,6 +162,28 @@ ZEEK_LOG_DIR=./test-data npm run dev
 |------|-------------|
 | `zeek_software_inventory` | List detected software and versions on the network |
 
+### Analytics
+
+| Tool | Description |
+|------|-------------|
+| `zeek_detect_beaconing` | Detect C2 beaconing by analyzing connection interval regularity and jitter |
+| `zeek_detect_anomalies` | Statistical anomaly detection: port scans, data exfiltration, unusual ports |
+
+### Suricata IDS
+
+| Tool | Description |
+|------|-------------|
+| `suricata_query_alerts` | Search Suricata alerts by signature, severity, IP, protocol, time |
+| `suricata_alert_summary` | High-level alert summary: top signatures, categories, IPs, severity distribution |
+| `suricata_correlate_zeek` | Cross-reference Suricata alerts with Zeek logs for full context |
+| `suricata_eve_stats` | Suricata engine statistics: packets, flows, detection performance |
+
+### Sensor Management
+
+| Tool | Description |
+|------|-------------|
+| `nids_sensor_status` | Live sensor status: log inventory, sizes, freshness, health checks |
+
 ## Resources
 
 | Resource | URI | Description |
@@ -153,13 +195,14 @@ ZEEK_LOG_DIR=./test-data npm run dev
 
 | Prompt | Description |
 |--------|-------------|
+| `triage-alert` | Triage a Suricata alert by cross-referencing with Zeek logs |
 | `investigate-host` | Guided host investigation workflow across all logs |
 | `hunt-for-c2` | Threat hunting for C2 communication patterns |
 | `network-baseline` | Generate a network activity baseline |
 
 ## Supported Log Types
 
-conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software
+conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software, dhcp, ntp, ocsp, websocket
 
 ## Testing
 
@@ -167,16 +210,12 @@ conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software
 npm test
 ```
 
-Tests use sample Zeek log files in `test-data/` covering both JSON and TSV formats.
+110 tests covering parsers (JSON + TSV), query engine, CIDR/wildcard filters, analytics (entropy, beaconing, anomaly detection), Suricata eve.json parsing, DHCP log parsing, and sensor status.
 
 ### Generate Test Data
 
-Generate realistic Zeek logs with injected suspicious patterns:
-
 ```bash
 npm run generate-logs
-
-# Options
 npx tsx scripts/generate-zeek-logs.ts --output=/tmp/zeek-logs --format=json
 ```
 
@@ -187,16 +226,16 @@ zeek-mcp/
   src/
     index.ts                 # MCP server entry point
     config.ts                # Environment config + validation
-    types.ts                 # Zeek log type definitions
+    types.ts                 # Zeek log type definitions (16 log types)
     resources.ts             # MCP resources
-    prompts.ts               # MCP prompts
+    prompts.ts               # MCP prompts (4 workflows)
     parser/
       index.ts               # Format-agnostic parser + log resolution
       json.ts                # JSON log parser
       tsv.ts                 # TSV log parser with header detection
     query/
       engine.ts              # Query engine with filtering/sorting
-      filters.ts             # CIDR match, wildcard, range operators
+      filters.ts             # CIDR match (v4+v6), wildcard, range operators
       aggregation.ts         # Statistical aggregation functions
     tools/
       connections.ts         # Connection analysis tools
@@ -208,6 +247,11 @@ zeek-mcp/
       ssh.ts                 # SSH analysis tools
       investigation.ts       # Cross-log investigation tools
       software.ts            # Software/asset discovery
+      dhcp.ts                # DHCP log tools + asset mapping
+      beaconing.ts           # Beaconing detection tool
+      anomaly.ts             # Anomaly detection tool
+      suricata.ts            # Suricata eve.json tools
+      sensor.ts              # Sensor status + health checks
     analytics/
       entropy.ts             # Shannon entropy calculation
       beaconing.ts           # Beacon detection algorithms
@@ -217,7 +261,11 @@ zeek-mcp/
     query.test.ts            # Query engine + filter tests
     analytics.test.ts        # Entropy, beaconing, anomaly tests
     tools.test.ts            # Integration tests with sample data
-  test-data/                 # Sample Zeek logs
+    suricata.test.ts         # Suricata eve.json parsing tests
+    dhcp.test.ts             # DHCP log parsing + asset map tests
+    beaconing-tools.test.ts  # Beaconing + anomaly detection tests
+    sensor.test.ts           # Sensor status tests
+  test-data/                 # Sample Zeek + Suricata logs
   scripts/
     generate-zeek-logs.ts    # Mock data generator
 ```
