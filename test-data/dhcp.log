@@ -1,0 +1,13 @@
+#separator \x09
+#set_separator	,
+#empty_field	(empty)
+#unset_field	-
+#path	dhcp
+#open	2024-02-01-00-00-00
+#fields	ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	mac	assigned_addr	lease_time	trans_id	client_addr	server_addr	host_name	msg_types	duration
+#types	time	string	addr	port	addr	port	string	addr	interval	count	addr	addr	string	vector[string]	interval
+1706745600.000000	C1dhcp01	0.0.0.0	68	255.255.255.255	67	aa:bb:cc:dd:ee:01	192.168.1.100	86400	12345	0.0.0.0	192.168.1.1	workstation-01	DISCOVER,OFFER,REQUEST,ACK	0.15
+1706745660.000000	C2dhcp02	0.0.0.0	68	255.255.255.255	67	aa:bb:cc:dd:ee:02	192.168.1.101	86400	12346	0.0.0.0	192.168.1.1	laptop-alice	DISCOVER,OFFER,REQUEST,ACK	0.12
+1706745720.000000	C3dhcp03	0.0.0.0	68	255.255.255.255	67	aa:bb:cc:dd:ee:03	192.168.1.102	86400	12347	0.0.0.0	192.168.1.1	-	DISCOVER,OFFER,REQUEST,ACK	0.10
+1706745780.000000	C4dhcp04	0.0.0.0	68	255.255.255.255	67	aa:bb:cc:dd:ee:01	192.168.1.100	86400	12348	192.168.1.100	192.168.1.1	workstation-01	REQUEST,ACK	0.08
+1706745840.000000	C5dhcp05	0.0.0.0	68	255.255.255.255	67	ff:ff:ff:ff:ff:01	192.168.1.200	3600	12349	0.0.0.0	192.168.1.1	rogue-device	DISCOVER,OFFER,REQUEST,ACK	0.20
