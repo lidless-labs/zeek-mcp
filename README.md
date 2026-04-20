@@ -62,12 +62,13 @@ npm run build
 
 ### Claude Desktop
 
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
 ```json
 {
   "mcpServers": {
     "zeek": {
-      "command": "node",
-      "args": ["/path/to/zeek-mcp/dist/index.js"],
+      "command": "zeek-mcp",
       "env": {
         "ZEEK_LOG_DIR": "/opt/nids/zeek/logs",
         "ZEEK_LOG_FORMAT": "tsv",
@@ -76,6 +77,115 @@ npm run build
     }
   }
 }
+```
+
+### Claude Code
+
+```bash
+claude mcp add zeek \
+  --env ZEEK_LOG_DIR=/opt/nids/zeek/logs \
+  --env ZEEK_LOG_FORMAT=tsv \
+  --env SURICATA_EVE_LOG=/opt/nids/suricata/logs/eve.json \
+  -- zeek-mcp
+```
+
+Add `--scope user` to make it available from any directory instead of only the current project.
+
+### OpenClaw
+
+If you're running from a source checkout instead of the npm-installed binary, point `command`/`args` at the built `dist/index.js`:
+
+```bash
+openclaw mcp set zeek '{
+  "command": "node",
+  "args": ["/absolute/path/to/zeek-mcp/dist/index.js"],
+  "env": {
+    "ZEEK_LOG_DIR": "/opt/nids/zeek/logs",
+    "ZEEK_LOG_FORMAT": "tsv",
+    "SURICATA_EVE_LOG": "/opt/nids/suricata/logs/eve.json"
+  }
+}'
+```
+
+Or, with the global npm install:
+
+```bash
+openclaw mcp set zeek '{
+  "command": "zeek-mcp",
+  "env": {
+    "ZEEK_LOG_DIR": "/opt/nids/zeek/logs",
+    "ZEEK_LOG_FORMAT": "tsv",
+    "SURICATA_EVE_LOG": "/opt/nids/suricata/logs/eve.json"
+  }
+}'
+```
+
+Then restart the OpenClaw gateway so the new server is picked up:
+
+```bash
+systemctl --user restart openclaw-gateway
+openclaw mcp list   # confirm "zeek" is registered
+```
+
+### Hermes Agent
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) reads MCP config from `~/.hermes/config.yaml` under the `mcp_servers` key. Add an entry:
+
+```yaml
+mcp_servers:
+  zeek:
+    command: "zeek-mcp"
+    env:
+      ZEEK_LOG_DIR: "/opt/nids/zeek/logs"
+      ZEEK_LOG_FORMAT: "tsv"
+      SURICATA_EVE_LOG: "/opt/nids/suricata/logs/eve.json"
+```
+
+Or, when running from a source checkout instead of the global npm install:
+
+```yaml
+mcp_servers:
+  zeek:
+    command: "node"
+    args: ["/absolute/path/to/zeek-mcp/dist/index.js"]
+    env:
+      ZEEK_LOG_DIR: "/opt/nids/zeek/logs"
+      ZEEK_LOG_FORMAT: "tsv"
+      SURICATA_EVE_LOG: "/opt/nids/suricata/logs/eve.json"
+```
+
+Then reload MCP from inside a Hermes session:
+
+```
+/reload-mcp
+```
+
+### Codex CLI
+
+[Codex CLI](https://github.com/openai/codex) registers MCP servers via `codex mcp add`:
+
+```bash
+codex mcp add zeek \
+  --env ZEEK_LOG_DIR=/opt/nids/zeek/logs \
+  --env ZEEK_LOG_FORMAT=tsv \
+  --env SURICATA_EVE_LOG=/opt/nids/suricata/logs/eve.json \
+  -- zeek-mcp
+```
+
+Or, when running from a source checkout:
+
+```bash
+codex mcp add zeek \
+  --env ZEEK_LOG_DIR=/opt/nids/zeek/logs \
+  --env ZEEK_LOG_FORMAT=tsv \
+  --env SURICATA_EVE_LOG=/opt/nids/suricata/logs/eve.json \
+  -- node /absolute/path/to/zeek-mcp/dist/index.js
+```
+
+Codex writes the entry to `~/.codex/config.toml` under `[mcp_servers.zeek]`. Verify with:
+
+```bash
+codex mcp list
 ```
 
 ### Standalone
