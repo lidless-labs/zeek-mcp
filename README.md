@@ -69,6 +69,31 @@ npm run build
 | `SURICATA_FAST_LOG` | `/opt/nids/suricata/logs/fast.log` | Path to Suricata fast.log |
 | `SURICATA_RULES_DIR` | `/opt/nids/suricata/rules` | Path to Suricata rules directory |
 
+### PCAP Analysis
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PCAP_DIR` | `/opt/nids/pcaps` | Directory of PCAP files. `pcap_analyze` confines all filenames (relative and absolute) to this directory; anything resolving outside it is rejected. |
+| `ZEEK_BINARY` | `/usr/local/zeek/bin/zeek` | Path to the Zeek binary. |
+| `ZEEK_CONTAINER` | `zeek` | Docker container to run Zeek in. Set to empty to run Zeek directly on the host. |
+| `PCAP_OUTPUT_DIR` | `/tmp/zeek-pcap-analysis` | Working directory for generated logs. |
+
+### MISP
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MISP_URL` | `https://localhost` | MISP base URL. |
+| `MISP_API_KEY` | (none) | MISP API key. Required for MISP tools. |
+| `MISP_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for MISP requests only (useful for self-signed MISP certs). Scoped to the MISP connection via a dedicated dispatcher; it does not affect any other connection or set global TLS options. |
+
+### TheHive
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THEHIVE_URL` | `http://localhost:9000` | TheHive base URL. |
+| `THEHIVE_API_KEY` | (none) | TheHive API key. Required for TheHive tools. |
+| `THEHIVE_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for TheHive requests only (useful for self-signed certs). Scoped to the TheHive connection; it does not affect any other connection or set global TLS options. |
+
 ## Usage
 
 ### Claude Desktop

@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { Agent } from "undici";
 
 export interface MispConfig {
   url: string;
@@ -15,6 +16,18 @@ export function getMispConfig(): MispConfig {
   };
 }
 
+// When MISP_VERIFY_SSL=false we disable TLS certificate verification for MISP
+// requests ONLY, via a scoped undici dispatcher. This does NOT touch the global
+// fetch agent or NODE_TLS_REJECT_UNAUTHORIZED, so every other connection in the
+// process keeps verifying certs. The agent is created lazily and reused.
+let insecureMispAgent: Agent | undefined;
+function getInsecureAgent(): Agent {
+  if (!insecureMispAgent) {
+    insecureMispAgent = new Agent({ connect: { rejectUnauthorized: false } });
+  }
+  return insecureMispAgent;
+}
+
 async function mispRequest(
   config: MispConfig,
   method: string,
@@ -28,18 +41,17 @@ async function mispRequest(
     "Accept": "application/json",
   };
 
-  const tlsOptions: RequestInit = {};
-  if (!config.verifySsl) {
-    // Node 18+ supports this via --insecure-http-parser or env
-    // For self-signed certs, we rely on NODE_TLS_REJECT_UNAUTHORIZED=0
-  }
-
-  const response = await fetch(url, {
+  // `dispatcher` is an undici extension to RequestInit honoured by Node's fetch.
+  const fetchOptions: RequestInit & { dispatcher?: Agent } = {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-    ...tlsOptions,
-  });
+  };
+  if (!config.verifySsl) {
+    fetchOptions.dispatcher = getInsecureAgent();
+  }
+
+  const response = await fetch(url, fetchOptions);
 
   const data = await response.json().catch(() => null);
   return { status: response.status, data };

@@ -20,21 +20,34 @@ export function getPcapConfig(): PcapConfig {
   };
 }
 
-function execCommand(cmd: string, timeoutMs = 60000): Promise<{ stdout: string; stderr: string; code: number }> {
+// Run a command with an argv ARRAY (no shell). User-controlled values are passed
+// as discrete arguments, so they can never be interpreted as shell syntax.
+function execFileCommand(
+  file: string,
+  args: string[],
+  timeoutMs = 60000,
+  cwd?: string,
+): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    child_process.exec(cmd, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    child_process.execFile(file, args, { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, cwd }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout?.toString() ?? "",
         stderr: stderr?.toString() ?? (error ? error.message : ""),
-        code: typeof error?.code === "number" ? error.code : (error ? 1 : 0),
+        code: typeof (error as { code?: unknown } | null)?.code === "number" ? (error as { code: number }).code : (error ? 1 : 0),
       });
     });
   });
 }
 
-// Validate script names to prevent command injection
+// Validate script names to prevent command/path injection.
+// Strict allowlist: alphanumerics plus . _ - and / for namespaced script paths.
+// Reject "/" prefixes and any ".." traversal segment so a script arg can never
+// escape Zeek's script search path or smuggle shell metacharacters.
 function validateScriptName(script: string): boolean {
-  return /^[a-zA-Z0-9_.\-\/]+$/.test(script);
+  if (!/^[A-Za-z0-9._\-/]+$/.test(script)) return false;
+  if (script.startsWith("/")) return false;
+  if (script.split("/").some((seg) => seg === "..")) return false;
+  return true;
 }
 
 export function registerPcapTools(server: McpServer): void {
@@ -116,16 +129,18 @@ export function registerPcapTools(server: McpServer): void {
           }
         }
 
-        const pcapPath = params.filename.startsWith("/")
-          ? params.filename
-          : path.join(config.pcapDir, params.filename);
-
-        // Prevent path traversal
-        const resolvedPcap = path.resolve(pcapPath);
+        // Confine ALL filenames (relative or absolute) to the configured pcapDir.
+        // Absolute paths are resolved as-is; relative paths are joined onto pcapDir.
+        // After resolution the path MUST live inside pcapDir or we reject it, so a
+        // caller can never read or feed Zeek an arbitrary file on the host.
         const resolvedDir = path.resolve(config.pcapDir);
-        if (!params.filename.startsWith("/") && !resolvedPcap.startsWith(resolvedDir + path.sep) && resolvedPcap !== resolvedDir) {
+        const pcapPath = path.isAbsolute(params.filename)
+          ? path.resolve(params.filename)
+          : path.resolve(resolvedDir, params.filename);
+
+        if (pcapPath !== resolvedDir && !pcapPath.startsWith(resolvedDir + path.sep)) {
           return {
-            content: [{ type: "text" as const, text: `Path traversal blocked: "${params.filename}"` }],
+            content: [{ type: "text" as const, text: `Path traversal blocked: "${params.filename}" is outside the allowed PCAP directory.` }],
             isError: true,
           };
         }
@@ -141,25 +156,31 @@ export function registerPcapTools(server: McpServer): void {
         const analysisId = `pcap-${Date.now()}`;
         const outputDir = path.join(config.outputDir, analysisId);
 
-        let cmd: string;
         if (config.zeekContainer) {
-          // Run inside Docker container
+          // Run inside Docker container. Every value is passed as a discrete argv
+          // element to `docker` (no inner `sh -c`, no shell string), so a hostile
+          // filename or script name can never be interpreted as shell syntax.
+          const containerWorkDir = `/tmp/${analysisId}`;
           const containerPcapPath = `/pcaps/${path.basename(pcapPath)}`;
-          const scriptArgs = params.scripts ? params.scripts.join(" ") : "";
-          cmd = `docker exec ${config.zeekContainer} /bin/sh -c "mkdir -p /tmp/${analysisId} && cd /tmp/${analysisId} && ${config.zeekBinary} -r ${containerPcapPath} ${scriptArgs} 2>&1 && echo '---ZEEK_DONE---' && ls -la /tmp/${analysisId}/ && echo '---FILES---'"`;
+          const scripts = params.scripts ?? [];
 
-          // After zeek runs, copy logs out
-          const result = await execCommand(cmd, params.timeoutSeconds * 1000);
+          // Create the per-analysis working directory.
+          await execFileCommand("docker", ["exec", config.zeekContainer, "mkdir", "-p", containerWorkDir], 5000);
+
+          // Run Zeek with its working directory set via `-w` (no `cd`).
+          const result = await execFileCommand(
+            "docker",
+            ["exec", "-w", containerWorkDir, config.zeekContainer, config.zeekBinary, "-r", containerPcapPath, ...scripts],
+            params.timeoutSeconds * 1000,
+          );
 
           // Read the generated logs from inside the container
-          const logListCmd = `docker exec ${config.zeekContainer} ls /tmp/${analysisId}/`;
-          const logList = await execCommand(logListCmd, 5000);
+          const logList = await execFileCommand("docker", ["exec", config.zeekContainer, "ls", containerWorkDir], 5000);
           const logFiles = logList.stdout.trim().split("\n").filter((f) => f.endsWith(".log"));
 
           const logs: Record<string, { recordCount: number; sample: string[] }> = {};
           for (const logFile of logFiles) {
-            const catCmd = `docker exec ${config.zeekContainer} cat /tmp/${analysisId}/${logFile}`;
-            const logContent = await execCommand(catCmd, 10000);
+            const logContent = await execFileCommand("docker", ["exec", config.zeekContainer, "cat", `${containerWorkDir}/${logFile}`], 10000);
             const lines = logContent.stdout.split("\n").filter((l) => l.trim() && !l.startsWith("#"));
             const headerLines = logContent.stdout.split("\n").filter((l) => l.startsWith("#fields") || l.startsWith("#types"));
             logs[logFile.replace(".log", "")] = {
@@ -169,7 +190,7 @@ export function registerPcapTools(server: McpServer): void {
           }
 
           // Cleanup
-          await execCommand(`docker exec ${config.zeekContainer} rm -rf /tmp/${analysisId}`, 5000);
+          await execFileCommand("docker", ["exec", config.zeekContainer, "rm", "-rf", containerWorkDir], 5000);
 
           return {
             content: [{
@@ -181,17 +202,23 @@ export function registerPcapTools(server: McpServer): void {
                 logTypesGenerated: Object.keys(logs),
                 totalRecords: Object.values(logs).reduce((sum, l) => sum + l.recordCount, 0),
                 logs,
-                zeekOutput: result.stderr || result.stdout.split("---ZEEK_DONE---")[0],
+                zeekOutput: result.stderr || result.stdout,
               }, null, 2),
             }],
           };
         } else {
-          // Run Zeek directly on host
+          // Run Zeek directly on host. Binary, flags, pcap path, and each script
+          // are passed as discrete argv elements (no shell), and Zeek runs with its
+          // cwd set to the per-analysis output directory instead of a `cd &&` prefix.
           fs.mkdirSync(outputDir, { recursive: true });
-          const scriptArgs = params.scripts ? params.scripts.join(" ") : "";
-          cmd = `cd ${outputDir} && ${config.zeekBinary} -r ${pcapPath} ${scriptArgs} 2>&1`;
+          const scripts = params.scripts ?? [];
 
-          const result = await execCommand(cmd, params.timeoutSeconds * 1000);
+          const result = await execFileCommand(
+            config.zeekBinary,
+            ["-r", pcapPath, ...scripts],
+            params.timeoutSeconds * 1000,
+            outputDir,
+          );
 
           const logFiles = fs.existsSync(outputDir)
             ? fs.readdirSync(outputDir).filter((f) => f.endsWith(".log"))

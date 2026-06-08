@@ -1,16 +1,30 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { Agent } from "undici";
 
 export interface TheHiveConfig {
   url: string;
   apiKey: string;
+  verifySsl: boolean;
 }
 
 export function getTheHiveConfig(): TheHiveConfig {
   return {
     url: process.env.THEHIVE_URL ?? "http://localhost:9000",
     apiKey: process.env.THEHIVE_API_KEY ?? "",
+    verifySsl: process.env.THEHIVE_VERIFY_SSL !== "false",
   };
+}
+
+// When THEHIVE_VERIFY_SSL=false we disable TLS certificate verification for
+// TheHive requests ONLY, via a scoped undici dispatcher. This never touches the
+// global fetch agent or NODE_TLS_REJECT_UNAUTHORIZED. Created lazily and reused.
+let insecureTheHiveAgent: Agent | undefined;
+function getInsecureAgent(): Agent {
+  if (!insecureTheHiveAgent) {
+    insecureTheHiveAgent = new Agent({ connect: { rejectUnauthorized: false } });
+  }
+  return insecureTheHiveAgent;
 }
 
 async function theHiveRequest(
@@ -30,12 +44,17 @@ async function theHiveRequest(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, {
+    const fetchOptions: RequestInit & { dispatcher?: Agent } = {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
-    });
+    };
+    if (!config.verifySsl) {
+      fetchOptions.dispatcher = getInsecureAgent();
+    }
+
+    const response = await fetch(url, fetchOptions);
 
     const data = await response.json().catch(() => null);
     return { status: response.status, data };
