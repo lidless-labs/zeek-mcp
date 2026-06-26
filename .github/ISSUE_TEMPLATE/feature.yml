@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a new tool, detection, log type, or improvement for zeek-mcp.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: Describe the investigation or workflow that is hard today. What would you ask the agent that it cannot do well now?
+      placeholder: |
+        When hunting for lateral movement I want the agent to correlate SMB activity with auth events, but there is no tool for it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Sketch the tool, detection, or log type. If it is a new tool, suggest a name, inputs, and what it returns.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of change
+      options:
+        - New MCP tool
+        - New detection / analytic
+        - New Zeek log type support
+        - Improve an existing tool
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: How do you work around this today (manual grep, SIEM query, another tool)?
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: A new tool, resource, or prompt changes the public surface. I understand a maintainer may want to agree on the name and shape before any code is written.
+          required: false
