@@ -1,0 +1,62 @@
+name: Bug report
+description: Something is broken in zeek-mcp itself, such as a parser, query, tool, or the server startup.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you ask the agent (or which tool was called), and what did you expect versus what you got?
+      placeholder: |
+        I asked the agent to summarize connections and it called `zeek_connection_summary`, which returned X.
+        I expected Y.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: zeek-mcp version
+      description: The version from your package.json or `npm view zeek-mcp version`.
+      placeholder: 3.0.0
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: 20.11.0
+    validations:
+      required: true
+  - type: dropdown
+    id: log-format
+    attributes:
+      label: Log format
+      options:
+        - json
+        - tsv
+        - not applicable
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Which client launched the server?
+      placeholder: Claude Desktop, Claude Code, OpenClaw, Codex CLI, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or error
+      description: Paste the relevant stdout/stderr or tool output. Redact private paths if you want, but keep enough to reproduce.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: scrub
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I have removed real hostnames, tokens, private IP addresses, and personal paths from this report.
+          required: true
