@@ -1,18 +1,10 @@
 <p align="center">
-  <img src="docs/assets/zeek-mcp-banner.jpg" alt="Watercolor cross-log network investigation map for zeek-mcp" width="100%" />
+  <img src="docs/assets/zeek-mcp-banner.jpg" alt="zeek-mcp banner" width="900">
 </p>
 
 <h1 align="center">zeek-mcp</h1>
 
 <p align="center"><strong>Analyze Zeek and Suricata network logs from your AI client.</strong></p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/zeek-mcp"><img src="https://img.shields.io/npm/v/zeek-mcp?style=for-the-badge&logo=npm&color=cb3837" alt="npm version" /></a>
-  <a href="https://github.com/lidless-labs/zeek-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/lidless-labs/zeek-mcp/ci.yml?branch=main&style=for-the-badge&label=CI&logo=github" alt="CI status" /></a>
-  <a href="https://modelcontextprotocol.io/"><img src="https://img.shields.io/badge/MCP-server-6f42c1?style=for-the-badge" alt="Model Context Protocol server" /></a>
-  <a href="https://zeek.org/"><img src="https://img.shields.io/badge/Zeek-NSM-00aeef?style=for-the-badge" alt="Zeek network security monitoring" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="MIT license" /></a>
-</p>
 
 <p align="center">
   <a href="https://lidless.dev/zeek-mcp"><strong>Website</strong></a>
@@ -24,6 +16,13 @@
   <a href="#quickstart">Quickstart</a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/npm/v/zeek-mcp?style=for-the-badge&logo=npm&label=npm" alt="npm version">
+  <img src="https://img.shields.io/github/actions/workflow/status/lidless-labs/zeek-mcp/ci.yml?branch=main&style=for-the-badge&label=ci" alt="CI status">
+  <img src="https://img.shields.io/badge/MCP-server-8A2BE2?style=for-the-badge" alt="Model Context Protocol server">
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT license">
+</p>
+
 zeek-mcp is a Model Context Protocol (MCP) server that lets an AI client read, query, and correlate [Zeek](https://zeek.org/) and [Suricata](https://suricata.io/) network security monitoring logs. It exists because network telemetry lives in dense per-protocol log files (conn, dns, http, ssl, files, notice, plus Suricata `eve.json`) that are tedious to grep by hand during an investigation, and an LLM is good at pivoting across them if you give it structured access. It differs from a generic log-reader MCP by speaking Zeek and Suricata natively: it parses both JSON and TSV, understands CIDR and wildcard matching, walks date-rotated and gzipped archives, and ships purpose-built detections (beaconing, DNS tunneling, JA3 hunting, anomaly and baseline analysis) rather than handing the model raw text.
 
 ## What it does
@@ -32,24 +31,20 @@ zeek-mcp turns a Zeek and Suricata sensor into a queryable surface for an AI age
 
 It reads logs; it does not run the sensor, mutate capture, or replace your SIEM. Everything is read-only against Zeek and Suricata data, with the single exception of the optional TheHive and MISP tools that create alerts, cases, and events when you provide credentials.
 
-## Features
+## Installation
 
-- **39 tools** for querying and analyzing Zeek + Suricata logs
-- **2 resources** for log type metadata and sensor stats
-- **4 prompts** for guided investigation workflows
-- **Dual format support** - JSON and TSV (Zeek's native tab-separated format)
-- **Suricata integration** - Query `eve.json` alerts, cross-correlate with Zeek, engine stats
-<!-- content-guard: allow private-ipv4 -->
-- **CIDR matching** - Filter by IP ranges (10.0.0.0/8, 192.168.1.0/24) with full IPv6 support
-- **Wildcard matching** - Search domains and URIs with patterns (`*.example.com`)
-- **Beaconing detection** - Statistical C2 beacon analysis with jitter scoring
-- **Anomaly + baseline detection** - Port scan, data exfiltration, unusual ports, statistical outliers vs a baseline
-- **DNS tunneling detection** - Shannon entropy analysis with encoding detection
-- **JA3/JA3S fingerprinting** - Track TLS clients and hunt known-malicious fingerprints across SSL logs
-- **PCAP replay** - Run a packet capture through Zeek and analyze the generated logs
-- **Incident response** - Escalate findings into TheHive (alerts/cases) and MISP (IOC lookups/events)
-- **DHCP asset mapping** - MAC-to-IP/hostname device inventory
-- **Compressed + rotated logs** - Reads `.gz` archives and navigates Zeek's date-based log directories
+```bash
+git clone https://github.com/lidless-labs/zeek-mcp.git
+cd zeek-mcp
+npm install
+npm run build
+```
+
+## Prerequisites
+
+- Node.js 20+
+- Zeek sensor generating logs (JSON or TSV format)
+- Suricata (optional, for IDS alert correlation)
 
 ## Quickstart
 
@@ -80,65 +75,6 @@ npx -y zeek-mcp   # or: git clone, npm install, npm run build, then node dist/in
 ```
 
 Set `ZEEK_LOG_DIR` to the included `test-data/` directory to explore without a live sensor (see [Development](#development)).
-
-## Prerequisites
-
-- Node.js 20+
-- Zeek sensor generating logs (JSON or TSV format)
-- Suricata (optional, for IDS alert correlation)
-
-## Installation
-
-```bash
-git clone https://github.com/lidless-labs/zeek-mcp.git
-cd zeek-mcp
-npm install
-npm run build
-```
-
-## Configuration
-
-### Zeek
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ZEEK_LOG_DIR` | `/opt/zeek/logs/current` | Path to current Zeek logs |
-| `ZEEK_LOG_ARCHIVE` | `/opt/zeek/logs` | Path to archived/rotated logs |
-| `ZEEK_LOG_FORMAT` | `json` | Log format: `json` or `tsv` |
-| `ZEEK_MAX_RESULTS` | `1000` | Maximum results per query |
-
-### Suricata
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SURICATA_EVE_LOG` | `/opt/suricata/logs/eve.json` | Path to Suricata eve.json |
-| `SURICATA_FAST_LOG` | `/opt/suricata/logs/fast.log` | Path to Suricata fast.log |
-| `SURICATA_RULES_DIR` | `/opt/suricata/rules` | Path to Suricata rules directory |
-
-### PCAP Analysis
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PCAP_DIR` | `/opt/pcaps` | Directory of PCAP files. `pcap_analyze` confines all filenames (relative and absolute) to this directory; anything resolving outside it is rejected. |
-| `ZEEK_BINARY` | `/usr/local/zeek/bin/zeek` | Path to the Zeek binary. |
-| `ZEEK_CONTAINER` | `zeek` | Docker container to run Zeek in. Set to empty to run Zeek directly on the host. |
-| `PCAP_OUTPUT_DIR` | `/tmp/zeek-pcap-analysis` | Working directory for generated logs. |
-
-### MISP
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MISP_URL` | `https://localhost` | MISP base URL. | <!-- content-guard: allow localhost-bare -->
-| `MISP_API_KEY` | (none) | MISP API key. Required for MISP tools. |
-| `MISP_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for MISP requests only (useful for self-signed MISP certs). Scoped to the MISP connection via a dedicated dispatcher; it does not affect any other connection or set global TLS options. |
-
-### TheHive
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `THEHIVE_URL` | `http://localhost:9000` | TheHive base URL. | <!-- content-guard: allow localhost-port -->
-| `THEHIVE_API_KEY` | (none) | TheHive API key. Required for TheHive tools. |
-| `THEHIVE_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for TheHive requests only (useful for self-signed certs). Scoped to the TheHive connection; it does not affect any other connection or set global TLS options. |
 
 ## Usage
 
@@ -374,6 +310,69 @@ zeek-mcp registers **39 tools**. Read-only Zeek/Suricata query and analysis tool
 ## Supported Log Types
 
 conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software, dhcp, ntp, ocsp, websocket
+
+## Configuration
+
+### Zeek
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZEEK_LOG_DIR` | `/opt/zeek/logs/current` | Path to current Zeek logs |
+| `ZEEK_LOG_ARCHIVE` | `/opt/zeek/logs` | Path to archived/rotated logs |
+| `ZEEK_LOG_FORMAT` | `json` | Log format: `json` or `tsv` |
+| `ZEEK_MAX_RESULTS` | `1000` | Maximum results per query |
+
+### Suricata
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SURICATA_EVE_LOG` | `/opt/suricata/logs/eve.json` | Path to Suricata eve.json |
+| `SURICATA_FAST_LOG` | `/opt/suricata/logs/fast.log` | Path to Suricata fast.log |
+| `SURICATA_RULES_DIR` | `/opt/suricata/rules` | Path to Suricata rules directory |
+
+### PCAP Analysis
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PCAP_DIR` | `/opt/pcaps` | Directory of PCAP files. `pcap_analyze` confines all filenames (relative and absolute) to this directory; anything resolving outside it is rejected. |
+| `ZEEK_BINARY` | `/usr/local/zeek/bin/zeek` | Path to the Zeek binary. |
+| `ZEEK_CONTAINER` | `zeek` | Docker container to run Zeek in. Set to empty to run Zeek directly on the host. |
+| `PCAP_OUTPUT_DIR` | `/tmp/zeek-pcap-analysis` | Working directory for generated logs. |
+
+### MISP
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MISP_URL` | `https://localhost` | MISP base URL. | <!-- content-guard: allow localhost-bare -->
+| `MISP_API_KEY` | (none) | MISP API key. Required for MISP tools. |
+| `MISP_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for MISP requests only (useful for self-signed MISP certs). Scoped to the MISP connection via a dedicated dispatcher; it does not affect any other connection or set global TLS options. |
+
+### TheHive
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THEHIVE_URL` | `http://localhost:9000` | TheHive base URL. | <!-- content-guard: allow localhost-port -->
+| `THEHIVE_API_KEY` | (none) | TheHive API key. Required for TheHive tools. |
+| `THEHIVE_VERIFY_SSL` | `true` | Set to `false` to disable TLS certificate verification for TheHive requests only (useful for self-signed certs). Scoped to the TheHive connection; it does not affect any other connection or set global TLS options. |
+
+## Features
+
+- **39 tools** for querying and analyzing Zeek + Suricata logs
+- **2 resources** for log type metadata and sensor stats
+- **4 prompts** for guided investigation workflows
+- **Dual format support** - JSON and TSV (Zeek's native tab-separated format)
+- **Suricata integration** - Query `eve.json` alerts, cross-correlate with Zeek, engine stats
+<!-- content-guard: allow private-ipv4 -->
+- **CIDR matching** - Filter by IP ranges (10.0.0.0/8, 192.168.1.0/24) with full IPv6 support
+- **Wildcard matching** - Search domains and URIs with patterns (`*.example.com`)
+- **Beaconing detection** - Statistical C2 beacon analysis with jitter scoring
+- **Anomaly + baseline detection** - Port scan, data exfiltration, unusual ports, statistical outliers vs a baseline
+- **DNS tunneling detection** - Shannon entropy analysis with encoding detection
+- **JA3/JA3S fingerprinting** - Track TLS clients and hunt known-malicious fingerprints across SSL logs
+- **PCAP replay** - Run a packet capture through Zeek and analyze the generated logs
+- **Incident response** - Escalate findings into TheHive (alerts/cases) and MISP (IOC lookups/events)
+- **DHCP asset mapping** - MAC-to-IP/hostname device inventory
+- **Compressed + rotated logs** - Reads `.gz` archives and navigates Zeek's date-based log directories
 
 ## Why not something else?
 
