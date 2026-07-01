@@ -17,10 +17,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/npm/v/zeek-mcp?style=for-the-badge&logo=npm&label=npm" alt="npm version">
-  <img src="https://img.shields.io/github/actions/workflow/status/lidless-labs/zeek-mcp/ci.yml?branch=main&style=for-the-badge&label=ci" alt="CI status">
-  <img src="https://img.shields.io/badge/MCP-server-8A2BE2?style=for-the-badge" alt="Model Context Protocol server">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT license">
+  <img src="https://shieldcn.dev/npm/zeek-mcp.svg" alt="npm version">
+  <img src="https://shieldcn.dev/github/ci/lidless-labs/zeek-mcp.svg?branch=main&workflow=ci.yml" alt="CI status">
+  <img src="https://shieldcn.dev/badge/MCP-server-8A2BE2.svg" alt="Model Context Protocol server">
+  <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT license">
 </p>
 
 zeek-mcp is a Model Context Protocol (MCP) server that lets an AI client read, query, and correlate [Zeek](https://zeek.org/) and [Suricata](https://suricata.io/) network security monitoring logs. It exists because network telemetry lives in dense per-protocol log files (conn, dns, http, ssl, files, notice, plus Suricata `eve.json`) that are tedious to grep by hand during an investigation, and an LLM is good at pivoting across them if you give it structured access. It differs from a generic log-reader MCP by speaking Zeek and Suricata natively: it parses both JSON and TSV, understands CIDR and wildcard matching, walks date-rotated and gzipped archives, and ships purpose-built detections (beaconing, DNS tunneling, JA3 hunting, anomaly and baseline analysis) rather than handing the model raw text.
