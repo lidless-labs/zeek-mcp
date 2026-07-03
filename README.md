@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/zeek-mcp-banner.jpg" alt="zeek-mcp banner" width="900">
+  <img src="docs/assets/zeek-mcp-social-preview.jpg" alt="zeek-mcp banner" width="900">
 </p>
 
 <h1 align="center">zeek-mcp</h1>
@@ -17,8 +17,8 @@
 </p>
 
 <p align="center">
-  <img src="https://shieldcn.dev/npm/zeek-mcp.svg" alt="npm version">
   <img src="https://shieldcn.dev/github/ci/lidless-labs/zeek-mcp.svg?branch=main&workflow=ci.yml" alt="CI status">
+  <img src="https://shieldcn.dev/npm/zeek-mcp.svg" alt="npm version">
   <img src="https://shieldcn.dev/badge/MCP-server-8A2BE2.svg" alt="Model Context Protocol server">
   <img src="https://shieldcn.dev/badge/license-MIT-green.svg" alt="MIT license">
 </p>
