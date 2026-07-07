@@ -71,10 +71,31 @@ Then ask your agent something like *"summarize the top talkers in the last conne
 To try it locally against the bundled sample data:
 
 ```bash
-npx -y zeek-mcp   # or: git clone, npm install, npm run build, then node dist/index.js
+npx -y zeek-mcp   # or: git clone, npm install, npm run build, then node dist/mcp-bin.js
 ```
 
 Set `ZEEK_LOG_DIR` to the included `test-data/` directory to explore without a live sensor (see [Development](#development)).
+
+## zeekctrl CLI
+
+`zeekctrl` is the operator CLI for quick local triage. The package also keeps `zeekctl` as a compatibility alias. `zeek-mcp` remains the MCP stdio adapter for AI clients.
+
+```bash
+npx -y --package zeek-mcp zeekctrl status --json
+ZEEK_LOG_DIR=./test-data npx -y --package zeek-mcp zeekctrl conn query --src-ip 192.168.1.100 --limit 5
+ZEEK_LOG_DIR=./test-data npx -y --package zeek-mcp zeekctrl dns query --query '*.example.com' --json
+ZEEK_LOG_DIR=./test-data npx -y --package zeek-mcp zeekctrl beaconing detect --min-connections 10 --min-score 60
+```
+
+From a source checkout after `npm run build`:
+
+```bash
+ZEEK_LOG_DIR=./test-data node dist/cli.js status
+ZEEK_LOG_DIR=./test-data node dist/cli.js conn query --proto tcp --limit 10
+node dist/cli.js mcp
+```
+
+The first CLI slice is intentionally read-only. It covers sensor setup checks, connection and DNS queries, and beaconing detection with `--json` output for scripts. Use the MCP server for the full tool set, including cross-log pivots, Suricata correlation, PCAP analysis, TheHive, and MISP workflows.
 
 ## Usage
 
@@ -126,12 +147,12 @@ openclaw mcp set zeek '{
 }'
 ```
 
-Or, when running from a source checkout instead of the npm package, point `command`/`args` at the built `dist/index.js`:
+Or, when running from a source checkout instead of the npm package, point `command`/`args` at the built `dist/mcp-bin.js`:
 
 ```bash
 openclaw mcp set zeek '{
   "command": "node",
-  "args": ["/absolute/path/to/zeek-mcp/dist/index.js"],
+  "args": ["/absolute/path/to/zeek-mcp/dist/mcp-bin.js"],
   "env": {
     "ZEEK_LOG_DIR": "/opt/zeek/logs/current",
     "ZEEK_LOG_FORMAT": "tsv",
@@ -164,7 +185,7 @@ Codex writes the entry to `~/.codex/config.toml` under `[mcp_servers.zeek]`. Ver
 ### Standalone
 
 ```bash
-ZEEK_LOG_DIR=/opt/zeek/logs/current ZEEK_LOG_FORMAT=tsv node dist/index.js
+ZEEK_LOG_DIR=/opt/zeek/logs/current ZEEK_LOG_FORMAT=tsv node dist/mcp-bin.js
 ```
 
 ### Development

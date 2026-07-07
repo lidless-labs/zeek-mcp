@@ -5,11 +5,11 @@ export interface ZeekConfig {
   maxResults: number;
 }
 
-export function getConfig(): ZeekConfig {
-  const logDir = process.env.ZEEK_LOG_DIR ?? "/opt/zeek/logs/current";
-  const logArchive = process.env.ZEEK_LOG_ARCHIVE ?? "/opt/zeek/logs";
-  const logFormat = (process.env.ZEEK_LOG_FORMAT ?? "json") as "json" | "tsv";
-  const maxResults = parseInt(process.env.ZEEK_MAX_RESULTS ?? "1000", 10);
+export function getConfig(env: NodeJS.ProcessEnv = process.env): ZeekConfig {
+  const logDir = env.ZEEK_LOG_DIR ?? "/opt/zeek/logs/current";
+  const logArchive = env.ZEEK_LOG_ARCHIVE ?? "/opt/zeek/logs";
+  const logFormat = (env.ZEEK_LOG_FORMAT ?? "json") as "json" | "tsv";
+  const maxResults = parseInt(env.ZEEK_MAX_RESULTS ?? "1000", 10);
 
   if (logFormat !== "json" && logFormat !== "tsv") {
     throw new Error(
@@ -19,7 +19,7 @@ export function getConfig(): ZeekConfig {
 
   if (isNaN(maxResults) || maxResults < 1) {
     throw new Error(
-      `Invalid ZEEK_MAX_RESULTS: "${process.env.ZEEK_MAX_RESULTS}". Must be a positive integer.`,
+      `Invalid ZEEK_MAX_RESULTS: "${env.ZEEK_MAX_RESULTS}". Must be a positive integer.`,
     );
   }
 

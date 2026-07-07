@@ -1,16 +1,18 @@
 {
   "name": "zeek-mcp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "MCP server for Zeek network analysis framework - query and analyze Zeek logs via AI",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "zeek-mcp": "dist/index.js"
+    "zeekctrl": "dist/cli.js",
+    "zeekctl": "dist/cli.js",
+    "zeek-mcp": "dist/mcp-bin.js"
   },
   "scripts": {
     "build": "tsup",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx watch src/mcp-bin.ts",
+    "start": "node dist/mcp-bin.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
@@ -25,7 +27,7 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "undici": "^7.27.2",
+    "undici": "^7.28.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -39,5 +41,10 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "overrides": {
+    "hono": "4.12.27",
+    "esbuild": "0.28.1"
+  },
+  "packageManager": "npm@10.9.7"
 }
