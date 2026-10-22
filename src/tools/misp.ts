@@ -1,3 +1,4 @@
+import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { Agent } from "undici";
@@ -59,6 +60,7 @@ async function mispRequest(
 
 export function registerMispTools(server: McpServer): void {
   const config = getMispConfig();
+  const allowMutation = process.env.ZEEK_ALLOW_MUTATION === "1";
 
   server.tool(
     "misp_search_iocs",
@@ -243,6 +245,7 @@ export function registerMispTools(server: McpServer): void {
     "misp_add_event",
     "Create a MISP event from NIDS findings to share threat intelligence. Includes attributes (IOCs), tags, and threat level classification.",
     {
+      confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       info: z.string().describe("Event description/title"),
       threatLevel: z.number().int().min(1).max(4).default(2).describe("1=High, 2=Medium, 3=Low, 4=Undefined"),
       analysis: z.number().int().min(0).max(2).default(1).describe("0=Initial, 1=Ongoing, 2=Complete"),
@@ -256,7 +259,10 @@ export function registerMispTools(server: McpServer): void {
         toIds: z.boolean().optional().describe("Use for IDS signature generation"),
       })).optional().describe("Attributes/IOCs to include"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async (params) => {
+      const gate = checkMutationAllowed(allowMutation, params, "misp_add_event");
+      if (!gate.allowed) return gate.response;
       try {
         if (!config.apiKey) {
           return {

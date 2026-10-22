@@ -178,7 +178,7 @@ ZEEK_LOG_DIR=./test-data npm run dev
 
 ## Tools
 
-zeek-mcp registers **39 tools**. Read-only Zeek/Suricata query and analysis tools make up most of the set; the TheHive and MISP tools are the only ones that write, and only when you supply credentials.
+zeek-mcp registers **39 tools**. Read-only Zeek/Suricata query and analysis tools make up most of the set; TheHive/MISP creation and PCAP replay require the mutation gate described below.
 
 ### Connection Analysis
 
@@ -316,6 +316,16 @@ conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software, dhcp
 
 ## Configuration
 
+### Mutation gate
+
+State-changing tools use the same two-step opt-in as suricata-mcp. By default, `thehive_create_alert`, `thehive_create_case`, `misp_add_event`, and `pcap_analyze` refuse to run. Set `ZEEK_ALLOW_MUTATION=1` in the server environment, restart the server, and pass `confirm: true` on each invocation. Values such as `true` do not enable the gate. Read-only tools do not require either opt-in. TheHive and MISP creation also require their API credentials.
+
+PCAP replay creates analysis files and starts Zeek locally or in a container. Enable the gate only when these operations are intended.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZEEK_ALLOW_MUTATION` | disabled | Set to exactly `1` to permit state-changing tools with per-call `confirm: true`. |
+
 ### Zeek
 
 | Variable | Default | Description |
@@ -395,7 +405,7 @@ It does not:
 - run on a schedule, open network listeners, or send notifications on its own
 - write to Zeek/Suricata data anywhere
 
-The only writes it performs are the optional TheHive and MISP tools, which create alerts, cases, and events, and only when you provide credentials.
+TheHive and MISP creation writes alerts, cases, and events using your credentials. PCAP replay creates analysis files. These four tools require `ZEEK_ALLOW_MUTATION=1` and per-call `confirm: true`.
 
 ## Testing
 

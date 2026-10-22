@@ -20,8 +20,8 @@ const fetchCalls: FetchCall[] = [];
 function makeServerStub() {
   const handlers: Record<string, ToolHandler> = {};
   const server = {
-    tool: (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {
-      handlers[name] = handler;
+    tool: (name: string, _desc: string, _schema: unknown, ...args: unknown[]) => {
+      handlers[name] = args.at(-1) as ToolHandler;
     },
   };
   return { server, handlers };
@@ -67,10 +67,12 @@ function hangingFetchOnAbort(): ReturnType<typeof createMockFetch> {
 }
 
 beforeEach(() => {
+  vi.stubEnv("ZEEK_ALLOW_MUTATION", "1");
   fetchCalls.length = 0;
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   delete process.env.THEHIVE_URL;
@@ -111,6 +113,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       const resultPromise = handlers.thehive_create_alert({
+        confirm: true,
         title: "Test alert",
         description: "Timeout probe",
       });
@@ -135,6 +138,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       await handlers.thehive_create_alert({
+        confirm: true,
         title: "Fast alert",
         description: "Should finish before timeout",
       });
@@ -158,6 +162,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       registerTheHiveTools(server as never);
 
       const result = await handlers.thehive_create_alert({
+        confirm: true,
         title: "No key",
         description: "Should fail fast",
       });
@@ -175,6 +180,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       const result = await handlers.thehive_create_alert({
+        confirm: true,
         title: "Bad payload",
         description: "Server rejects",
       });
@@ -194,6 +200,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       const result = await handlers.thehive_create_case({
+        confirm: true,
         title: "Unreachable",
         description: "Network down",
       });
@@ -210,6 +217,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       const result = await handlers.thehive_create_alert({
+        confirm: true,
         title: "Broken body",
         description: "Non-JSON response",
       });
@@ -226,6 +234,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       const result = await handlers.thehive_create_alert({
+        confirm: true,
         title: "Good alert",
         description: "Created",
       });
@@ -246,6 +255,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers(false);
 
       await handlers.thehive_create_alert({
+        confirm: true,
         title: "Insecure TLS",
         description: "Scoped agent",
       });
@@ -261,6 +271,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers(true);
 
       await handlers.thehive_create_alert({
+        confirm: true,
         title: "Secure TLS",
         description: "Default verify",
       });
@@ -276,6 +287,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers(false);
 
       await handlers.thehive_create_alert({
+        confirm: true,
         title: "First",
         description: "Creates alert",
         observables: [{ dataType: "ip", data: "192.0.2.1" }],
@@ -295,6 +307,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       const handlers = await registerTheHiveHandlers();
 
       await handlers.thehive_create_alert({
+        confirm: true,
         title: "Shape check",
         description: "Headers and URL",
       });
@@ -349,7 +362,7 @@ describe("MISP HTTP client (undici/fetch)", () => {
       );
       const handlers = await registerMispHandlers();
 
-      const result = await handlers.misp_add_event({ info: "Unreachable host" });
+      const result = await handlers.misp_add_event({ confirm: true, info: "Unreachable host" });
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toBe("Error creating MISP event: getaddrinfo ENOTFOUND");
@@ -364,7 +377,7 @@ describe("MISP HTTP client (undici/fetch)", () => {
       );
       const handlers = await registerMispHandlers();
 
-      const result = await handlers.misp_add_event({ info: "Created event" });
+      const result = await handlers.misp_add_event({ confirm: true, info: "Created event" });
 
       expect(result.isError).toBeUndefined();
       const payload = JSON.parse(result.content[0].text);

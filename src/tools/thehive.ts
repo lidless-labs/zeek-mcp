@@ -1,3 +1,4 @@
+import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { Agent } from "undici";
@@ -65,11 +66,13 @@ async function theHiveRequest(
 
 export function registerTheHiveTools(server: McpServer): void {
   const config = getTheHiveConfig();
+  const allowMutation = process.env.ZEEK_ALLOW_MUTATION === "1";
 
   server.tool(
     "thehive_create_alert",
     "Create a TheHive alert from NIDS findings. Includes observables (IPs, domains, hashes), severity, TLP marking, and alert description. Use after investigating suspicious activity in Zeek/Suricata logs.",
     {
+      confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       title: z.string().describe("Alert title"),
       description: z.string().describe("Detailed description of the finding"),
       severity: z.number().int().min(1).max(4).default(2).describe("Severity: 1=Low, 2=Medium, 3=High, 4=Critical"),
@@ -89,7 +92,10 @@ export function registerTheHiveTools(server: McpServer): void {
         tags: z.array(z.string()).optional(),
       })).optional().describe("Observables to attach to the alert"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async (params) => {
+      const gate = checkMutationAllowed(allowMutation, params, "thehive_create_alert");
+      if (!gate.allowed) return gate.response;
       try {
         if (!config.apiKey) {
           return {
@@ -163,6 +169,7 @@ export function registerTheHiveTools(server: McpServer): void {
     "thehive_create_case",
     "Create a TheHive case for in-depth investigation. Escalate from alerts or create directly from significant NIDS findings. Cases support tasks, observables, and collaborative investigation.",
     {
+      confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       title: z.string().describe("Case title"),
       description: z.string().describe("Detailed case description"),
       severity: z.number().int().min(1).max(4).default(2).describe("Severity: 1=Low, 2=Medium, 3=High, 4=Critical"),
@@ -183,7 +190,10 @@ export function registerTheHiveTools(server: McpServer): void {
         tags: z.array(z.string()).optional(),
       })).optional().describe("Observables to attach"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     async (params) => {
+      const gate = checkMutationAllowed(allowMutation, params, "thehive_create_case");
+      if (!gate.allowed) return gate.response;
       try {
         if (!config.apiKey) {
           return {
