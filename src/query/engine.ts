@@ -1,6 +1,7 @@
 import type { ZeekRecord, LogType } from "../types.js";
 import type { ZeekConfig } from "../config.js";
-import { queryLog } from "../parser/index.js";
+import { scanLogs, type LogRecords } from "../parser/index.js";
+import { BoundedBuffer } from "./bounded-buffer.js";
 import { getNestedValue } from "./aggregation.js";
 
 export interface QueryOptions {
@@ -22,44 +23,40 @@ export interface FilterDef {
 export async function executeQuery(
   config: ZeekConfig,
   options: QueryOptions,
-): Promise<ZeekRecord[]> {
-  const records = await queryLog(
-    config,
-    options.logType,
-    options.timeFrom,
-    options.timeTo,
-  );
-
-  let filtered = records;
-  if (options.filters && options.filters.length > 0) {
-    filtered = records.filter((record) =>
-      options.filters!.every((filter) => applyFilter(record, filter)),
-    );
-  }
-
+): Promise<LogRecords> {
   const sortField = options.sortBy ?? "ts";
   const sortOrder = options.sortOrder ?? "desc";
-
-  filtered.sort((a, b) => {
+  const limit = Math.floor(Math.max(0, Math.min(options.limit ?? 100, config.maxResults)));
+  const compare = (a: ZeekRecord, b: ZeekRecord): number => {
     const aVal = getNestedValue(a, sortField);
     const bVal = getNestedValue(b, sortField);
-
     if (aVal === undefined && bVal === undefined) return 0;
     if (aVal === undefined) return 1;
     if (bVal === undefined) return -1;
-
-    let cmp: number;
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      cmp = aVal - bVal;
-    } else {
-      cmp = String(aVal).localeCompare(String(bVal));
-    }
-
+    const cmp = typeof aVal === "number" && typeof bVal === "number"
+      ? aVal - bVal : String(aVal).localeCompare(String(bVal));
     return sortOrder === "desc" ? -cmp : cmp;
+  };
+  type Entry = { record: ZeekRecord; sequence: number };
+  const newest = new BoundedBuffer<Entry>(limit, (a, b) => compare(a.record, b.record) || a.sequence - b.sequence);
+  const boundedSort = sortField === "ts" && sortOrder === "desc";
+  const filtered: ZeekRecord[] = [];
+  let sequence = 0;
+  const scan = await scanLogs(config, options.logType, options.timeFrom, options.timeTo, (record) => {
+    if (options.filters && !options.filters.every((filter) => applyFilter(record, filter))) return;
+    if (boundedSort) newest.add({ record, sequence: sequence++ });
+    else filtered.push(record);
   });
+  const records: LogRecords = boundedSort
+    ? newest.sorted().map((entry) => entry.record)
+    : filtered.sort(compare).slice(0, limit);
+  if (scan.truncated) records.truncated = true;
+  return records;
+}
 
-  const limit = Math.min(options.limit ?? 100, config.maxResults);
-  return filtered.slice(0, limit);
+// Tools must keep this metadata when formatting or aggregating the record arrays.
+export function queryMetadata(...results: ZeekRecord[][]): { truncated?: true } {
+  return results.some((records) => (records as LogRecords).truncated) ? { truncated: true } : {};
 }
 
 function applyFilter(record: ZeekRecord, filter: FilterDef): boolean {

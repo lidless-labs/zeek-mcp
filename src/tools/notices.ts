@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 
 export function registerNoticeTools(
   server: McpServer,
@@ -19,6 +19,7 @@ export function registerNoticeTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -51,7 +52,7 @@ export function registerNoticeTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               notices: records.map(formatNotice),
             }, null, 2),

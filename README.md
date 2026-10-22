@@ -324,6 +324,12 @@ conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software, dhcp
 | `ZEEK_LOG_ARCHIVE` | `/opt/zeek/logs` | Path to archived/rotated logs |
 | `ZEEK_LOG_FORMAT` | `json` | Log format: `json` or `tsv` |
 | `ZEEK_MAX_RESULTS` | `1000` | Maximum results per query |
+| `ZEEK_MAX_SCAN` | `1000000` | Maximum input lines scanned per query across selected files, including comments and malformed lines. Queries stop at this budget and report `truncated: true`. |
+| `ZEEK_MAX_DATE_RANGE_DAYS` | `31` | Maximum calendar dates in a query window. Larger ranges are rejected before log-directory access. |
+
+Default timestamp-descending queries retain at most the requested result limit while scanning. Other sort fields and ascending queries retain at most the scan budget before sorting. A truncated response describes only the scanned prefix, so its latest records and analysis summaries may be incomplete. Reaching the scan budget reports truncation conservatively, even if the file ends at that line.
+
+Archive dates and rotated filename clocks are interpreted in the server's local timezone. Set `TZ` to match the sensor when reading its archives. Files with rotation intervals outside the requested window are skipped, except on dates with a daylight-saving transition.
 
 ### Suricata
 
@@ -406,6 +412,14 @@ npm test
 110 tests covering parsers (JSON + TSV), query engine, CIDR/wildcard filters, analytics (entropy, beaconing, anomaly detection), Suricata eve.json parsing, DHCP log parsing, and sensor status.
 
 ### Generate Test Data
+
+For a deterministic large JSON connection log without accumulating it in memory:
+
+```bash
+npm run generate-logs -- --output=./example-logs --fixture-count=200000
+```
+
+The fixture mode writes only `conn.log`, with sequential timestamps and example identifiers. It accepts 1 to 1000000 records.
 
 ```bash
 npm run generate-logs

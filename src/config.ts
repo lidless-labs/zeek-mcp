@@ -3,6 +3,8 @@ export interface ZeekConfig {
   logArchive: string;
   logFormat: "json" | "tsv";
   maxResults: number;
+  maxScan?: number;
+  maxDateRangeDays?: number;
 }
 
 export function getConfig(): ZeekConfig {
@@ -23,7 +25,10 @@ export function getConfig(): ZeekConfig {
     );
   }
 
-  return { logDir, logArchive, logFormat, maxResults };
+  return { logDir, logArchive, logFormat, maxResults,
+    maxScan: positiveInteger("ZEEK_MAX_SCAN", 1000000),
+    maxDateRangeDays: positiveInteger("ZEEK_MAX_DATE_RANGE_DAYS", 31),
+  };
 }
 
 /**
@@ -33,3 +38,13 @@ export function getConfig(): ZeekConfig {
  * - SURICATA_FAST_LOG: Path to fast.log (default: /opt/nids/suricata/logs/fast.log)
  * - SURICATA_RULES_DIR: Path to rules directory (default: /opt/nids/suricata/rules)
  */
+
+function positiveInteger(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`Invalid ${name}: must be a positive safe integer.`);
+  }
+  return value;
+}

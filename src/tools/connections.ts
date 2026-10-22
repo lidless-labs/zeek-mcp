@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 import { groupBy, sumField, countUnique, topN } from "../query/aggregation.js";
 
 export function registerConnectionTools(
@@ -27,6 +27,7 @@ export function registerConnectionTools(
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results (default 100)"),
       sortBy: z.string().optional().describe("Sort field (default: ts descending)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -74,7 +75,7 @@ export function registerConnectionTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               connections: records.map(formatConnection),
             }, null, 2),
@@ -97,6 +98,7 @@ export function registerConnectionTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       groupBy: z.enum(["src", "dst", "service", "port", "proto"]).optional().describe("Primary grouping dimension"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -131,7 +133,7 @@ export function registerConnectionTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(summary, null, 2),
+            text: JSON.stringify({ ...summary, ...queryMetadata(records) }, null, 2),
           }],
         };
       } catch (error) {
@@ -152,6 +154,7 @@ export function registerConnectionTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -169,7 +172,7 @@ export function registerConnectionTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               minDurationFilter: params.minDuration,
               connections: records.map(formatConnection),

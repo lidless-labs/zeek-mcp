@@ -369,6 +369,25 @@ function main(): void {
     fs.mkdirSync(config.outputDir, { recursive: true });
   }
 
+  // Deterministic, constant-memory input for query load checks.
+  const fixtureArg = process.argv.find((arg) => arg.startsWith("--fixture-count="));
+  if (fixtureArg) {
+    const count = Number(fixtureArg.slice("--fixture-count=".length));
+    if (!Number.isSafeInteger(count) || count < 1 || count > 1000000) {
+      throw new Error("--fixture-count must be an integer between 1 and 1000000.");
+    }
+    const fd = fs.openSync(path.join(config.outputDir, "conn.log"), "w");
+    try {
+      for (let i = 0; i < count; i++) {
+        fs.writeSync(fd, JSON.stringify({ ts: i, uid: `example-${i}`, proto: "tcp", duration: count - i }) + "\n");
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+    console.log(`Generated ${count} JSON connection records`);
+    return;
+  }
+
   const logs: Record<string, string[]> = {
     "conn.log": generateConnLog(config),
     "dns.log": generateDnsLog(config),
