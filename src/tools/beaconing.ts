@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery } from "../query/engine.js";
+import { queryMetadata, executeQuery } from "../query/engine.js";
 import { detectBeaconing } from "../analytics/beaconing.js";
 
 export function registerBeaconingTools(
@@ -20,6 +20,7 @@ export function registerBeaconingTools(
       maxJitterPercent: z.number().min(0).max(100).default(30).describe("Maximum jitter percentage to flag as beaconing (default 30)"),
       minScore: z.number().min(0).max(100).default(50).describe("Minimum beacon score to include in results (default 50)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters = [];
@@ -57,7 +58,7 @@ export function registerBeaconingTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalConnectionsAnalyzed: records.length,
               beaconCandidates: filtered.length,
               minConnectionsThreshold: params.minConnections,

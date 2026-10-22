@@ -1,12 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { parseJsonLine, parseJsonLines } from "../src/parser/json.js";
 import {
   parseTsvHeader,
   parseTsvRecord,
   parseTsvContent,
 } from "../src/parser/tsv.js";
-import { readLogFile } from "../src/parser/index.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import { gzipSync } from "node:zlib";
+import { getConfig } from "../src/config.js";
+import { readLogFile, queryLog } from "../src/parser/index.js";
 import * as path from "node:path";
+
+vi.mock("node:fs", async (original) => ({ ...await original<typeof import("node:fs")>() }));
 
 const TEST_DATA_DIR = path.join(process.cwd(), "test-data");
 
@@ -217,5 +223,102 @@ describe("TSV parser", () => {
     expect(record).not.toBeNull();
     expect(record!.auth_success).toBe(true);
     expect(record!.rejected).toBe(false);
+  });
+});
+
+
+describe("streaming log bounds", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+  function fixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "example-zeek-parser-"));
+    roots.push(root);
+    return root;
+  }
+
+  it.each([false, true])("filters JSON records before retaining at most the cap (gzip=%s)", async (gzip) => {
+    const root = fixture();
+    const file = path.join(root, gzip ? "conn.log.gz" : "conn.log");
+    const lines = Array.from({ length: 30 }, (_, ts) => JSON.stringify({ ts, uid: `example-${ts}` })).join("\n");
+    fs.writeFileSync(file, gzip ? gzipSync(lines) : lines);
+    const streams = vi.spyOn(fs, "createReadStream");
+    const predicate = vi.fn((r: { ts: number }) => r.ts >= 10);
+    const records = await readLogFile(file, "json", predicate, 3);
+    expect(records.map((r) => r.ts)).toEqual([10, 11, 12]);
+    expect(predicate).toHaveBeenCalledTimes(13);
+    expect(streams.mock.results[0].value.destroyed).toBe(true);
+  });
+
+  it("applies the same streaming predicate and cap to TSV", async () => {
+    const root = fixture();
+    const file = path.join(root, "conn.log");
+    fs.writeFileSync(file, "#fields\tts\tuid\n#types\ttime\tstring\n" + Array.from({ length: 30 }, (_, ts) => `${ts}\texample-${ts}`).join("\n"));
+    const predicate = vi.fn((r: { ts: number }) => r.ts >= 10);
+    expect((await readLogFile(file, "tsv", predicate, 3)).map((r) => r.ts)).toEqual([10, 11, 12]);
+    expect(predicate).toHaveBeenCalledTimes(13);
+  });
+
+  it("charges malformed and comment lines against the scan budget", async () => {
+    const root = fixture();
+    fs.writeFileSync(path.join(root, "conn.log"), "invalid\n// comment\n".repeat(10) + JSON.stringify({ ts: 1 }));
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100, maxScan: 10 }, "conn");
+    expect(records).toHaveLength(0);
+    expect(records.truncated).toBe(true);
+  });
+
+  describe("query budgets", () => {
+    it.each(["ZEEK_MAX_SCAN", "ZEEK_MAX_DATE_RANGE_DAYS"])("validates %s", (name) => {
+      for (const invalid of ["0", "-1", "1.5", "nope", "9007199254740992"]) {
+        vi.stubEnv(name, invalid);
+        expect(() => getConfig()).toThrow(name);
+      }
+      vi.stubEnv(name, "7");
+      expect(getConfig()[name === "ZEEK_MAX_SCAN" ? "maxScan" : "maxDateRangeDays"]).toBe(7);
+    });
+  });
+
+  it("rejects a five-year range before filesystem access", async () => {
+    const exists = vi.spyOn(fs, "existsSync");
+    const read = vi.spyOn(fs, "readdirSync");
+    await expect(queryLog({ logDir: "example", logArchive: "example", logFormat: "json", maxResults: 100 }, "conn", "2020-01-01", "2025-01-01")).rejects.toThrow("31 days");
+    expect(exists).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("retains later rotations containing connections that started in the window", async () => {
+    const root = fixture();
+    const archive = path.join(root, "2024-02-01");
+    fs.mkdirSync(archive);
+    const ts = new Date("2024-02-01T12:10:00").getTime() / 1000;
+    fs.writeFileSync(path.join(archive, "conn.13:00:00-14:00:00.log.gz"), gzipSync(JSON.stringify({ ts, duration: 3900 })));
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100 }, "conn", new Date("2024-02-01T12:00:00").toISOString(), new Date("2024-02-01T12:30:00").toISOString());
+    expect(records.map((r) => r.ts)).toEqual([ts]);
+  });
+
+  it("marks an incomplete gzip read as truncated", async () => {
+    const root = fixture();
+    const compressed = gzipSync(Array.from({ length: 10000 }, (_, ts) => JSON.stringify({ ts, uid: `example-${ts}` })).join("\n"));
+    compressed[compressed.length - 8] ^= 255;
+    fs.writeFileSync(path.join(root, "conn.log.gz"), compressed);
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100 }, "conn");
+    expect(records.truncated).toBe(true);
+  });
+
+  it("skips rotated files outside the window before opening them", async () => {
+    const root = fixture();
+    const archive = path.join(root, "2024-02-01");
+    fs.mkdirSync(archive);
+    const skipped = path.join(archive, "conn.00:00:00-01:00:00.log.gz");
+    const kept = path.join(archive, "conn.12:00:00-13:00:00.log.gz");
+    fs.writeFileSync(skipped, gzipSync(JSON.stringify({ ts: 1706745600 })));
+    fs.writeFileSync(kept, gzipSync(JSON.stringify({ ts: new Date("2024-02-01T12:00:00").getTime() / 1000 })));
+    const open = vi.spyOn(fs, "createReadStream");
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100 }, "conn", new Date("2024-02-01T12:00:00").toISOString(), new Date("2024-02-01T12:30:00").toISOString());
+    expect(records.map((r) => r.ts)).toEqual([new Date("2024-02-01T12:00:00").getTime() / 1000]);
+    expect(open.mock.calls.map(([file]) => file)).toEqual([kept]);
   });
 });

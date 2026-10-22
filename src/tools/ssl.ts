@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 
 export function registerSslTools(
   server: McpServer,
@@ -22,6 +22,7 @@ export function registerSslTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -63,7 +64,7 @@ export function registerSslTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               connections: records.map(formatSsl),
             }, null, 2),
@@ -85,6 +86,7 @@ export function registerSslTools(
       timeFrom: z.string().optional().describe("Start time (ISO 8601)"),
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -134,7 +136,7 @@ export function registerSslTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalAnalyzed: records.length,
               flaggedCount: flagged.length,
               flagged: flagged.slice(0, 200),

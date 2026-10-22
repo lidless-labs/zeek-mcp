@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 import { topN } from "../query/aggregation.js";
 
 export function registerSshTools(
@@ -20,6 +20,7 @@ export function registerSshTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -48,7 +49,7 @@ export function registerSshTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               connections: records.map(formatSsh),
             }, null, 2),
@@ -71,6 +72,7 @@ export function registerSshTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       threshold: z.number().int().min(1).default(5).describe("Minimum failed attempts to flag (default 5)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -126,7 +128,7 @@ export function registerSshTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalFailedAuth: records.length,
               bruteForceSourceCount: bruteForce.length,
               threshold: params.threshold,

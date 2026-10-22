@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   matchCidr,
   matchWildcard,
@@ -14,6 +14,19 @@ import {
   topN,
   getNestedValue,
 } from "../src/query/aggregation.js";
+import { gzipSync } from "node:zlib";
+import { execFileSync } from "node:child_process";
+import { BoundedBuffer } from "../src/query/bounded-buffer.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { executeQuery } from "../src/query/engine.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { registerBaselineTools } from "../src/tools/baseline.js";
+import { registerInvestigationTools } from "../src/tools/investigation.js";
+import { registerConnectionTools } from "../src/tools/connections.js";
 import type { ZeekRecord } from "../src/types.js";
 
 describe("CIDR matching", () => {
@@ -180,5 +193,117 @@ describe("Aggregation", () => {
   it("should limit group results", () => {
     const result = groupBy(testRecords, "id.orig_h", 2);
     expect(result.groups).toHaveLength(2);
+  });
+});
+
+
+describe("bounded streaming queries", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+  });
+  function fixture(records: ZeekRecord[]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "example-zeek-query-"));
+    roots.push(root);
+    fs.writeFileSync(path.join(root, "conn.log"), records.map((r) => JSON.stringify(r)).join("\n"));
+    return { logDir: root, logArchive: root, logFormat: "json" as const, maxResults: 1000 };
+  }
+
+  it("keeps at most 10 records while querying a generated 200000-record log", async () => {
+    const config = fixture([]);
+    execFileSync(process.execPath, ["--import", "tsx", "scripts/generate-zeek-logs.ts", `--output=${config.logDir}`, "--fixture-count=200000"], { stdio: "ignore" });
+    let peak = 0;
+    const add = BoundedBuffer.prototype.add;
+    let offered = 0;
+    BoundedBuffer.prototype.add = function (item) {
+      add.call(this, item);
+      offered++;
+      peak = Math.max(peak, this.size);
+    };
+    try {
+      const records = await executeQuery(config, { logType: "conn", limit: 10 });
+      expect(offered).toBe(200000);
+      expect(peak).toBe(10);
+      expect(records.map((r) => r.ts)).toEqual(Array.from({ length: 10 }, (_, i) => 199999 - i));
+      expect(records.truncated).toBeUndefined();
+    } finally {
+      BoundedBuffer.prototype.add = add;
+    }
+  }, 15000);
+
+  it("scans current data and later archive rotations first within a global budget", async () => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const base = today.getTime() / 1000;
+    const config = fixture([{ ts: base + 100, uid: "example-current" }]);
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const archive = path.join(config.logArchive, date);
+    fs.mkdirSync(archive);
+    fs.writeFileSync(path.join(archive, "conn.12:00:00-13:00:00.log"), JSON.stringify({ ts: base + 50, uid: "example-later" }));
+    fs.writeFileSync(path.join(archive, "conn.11:00:00-12:00:00.log"), JSON.stringify({ ts: base, uid: "example-earlier" }));
+    const records = await executeQuery({ ...config, maxScan: 2 }, { logType: "conn", timeFrom: new Date(base * 1000).toISOString(), timeTo: new Date((base + 1800) * 1000).toISOString(), limit: 10 });
+    expect(records.truncated).toBe(true);
+    expect(records.map((r) => r.uid)).toEqual(["example-current", "example-later"]);
+    fs.writeFileSync(path.join(config.logDir, "conn.log.gz"), gzipSync(JSON.stringify({ ts: base, uid: "example-compressed" })));
+    const current = await executeQuery({ ...config, maxScan: 1 }, { logType: "conn", limit: 10 });
+    expect(current.map((r) => r.uid)).toEqual(["example-current"]);
+  });
+
+  it("prioritizes a historical window before large current and later-rotation inputs", async () => {
+    const base = new Date("2024-02-01T12:00:00").getTime() / 1000;
+    const config = fixture(Array.from({ length: 10 }, (_, i) => ({ ts: base + 86400 + i })));
+    const archive = path.join(config.logArchive, "2024-02-01");
+    fs.mkdirSync(archive);
+    fs.writeFileSync(path.join(archive, "conn.13:00:00-14:00:00.log"), Array.from({ length: 10 }, (_, i) => JSON.stringify({ ts: base + 3600 + i })).join("\n"));
+    fs.writeFileSync(path.join(archive, "conn.12:00:00-13:00:00.log"), JSON.stringify({ ts: base + 60, uid: "example-in-window" }));
+    const records = await executeQuery({ ...config, maxScan: 3 }, { logType: "conn", timeFrom: new Date(base * 1000).toISOString(), timeTo: new Date((base + 1800) * 1000).toISOString(), limit: 10 });
+    expect(records.truncated).toBe(true);
+    expect(records.map((r) => r.uid)).toEqual(["example-in-window"]);
+  });
+
+  it.each([undefined, "duration"])("stops at the scan cap before filtering and exposes truncation (sort=%s)", async (sortBy) => {
+    const config = fixture(Array.from({ length: 30 }, (_, i) => ({ ts: i, duration: 30 - i, proto: i >= 10 ? "udp" : "tcp" })));
+    const records = await executeQuery({ ...config, maxScan: 10 }, { logType: "conn", limit: 3, sortBy, filters: [{ field: "proto", op: "eq", value: "udp" }] });
+    expect(records).toHaveLength(0);
+    expect(records.truncated).toBe(true);
+  });
+
+  it("preserves stable ordering, filters, and all sort modes on small inputs", async () => {
+    const input = [{ ts: 3, duration: 2, uid: "example-a" }, { ts: 1, uid: "example-b" }, { ts: 3, duration: 4, uid: "example-c" }, { ts: 2, duration: 1, uid: "example-d" }];
+    const config = fixture(input);
+    expect((await executeQuery(config, { logType: "conn", limit: 2 })).map((r) => r.uid)).toEqual(["example-a", "example-c"]);
+    expect((await executeQuery(config, { logType: "conn", sortOrder: "asc" })).map((r) => r.uid)).toEqual(["example-b", "example-d", "example-a", "example-c"]);
+    expect((await executeQuery(config, { logType: "conn", sortBy: "duration" })).map((r) => r.uid)).toEqual(["example-c", "example-a", "example-d", "example-b"]);
+    expect((await executeQuery(config, { logType: "conn", filters: [{ field: "duration", op: "gte", value: 2 }] })).map((r) => r.uid)).toEqual(["example-a", "example-c"]);
+  });
+
+  it("reports scan truncation in the MCP tool response even with no matches", async () => {
+    const config = fixture(Array.from({ length: 30 }, (_, ts) => ({ ts, proto: "tcp" })));
+    const server = new McpServer({ name: "example", version: "1.0.0" });
+    registerConnectionTools(server, { ...config, maxScan: 10 });
+    registerBaselineTools(server, { ...config, maxScan: 10 });
+    registerInvestigationTools(server, { ...config, maxScan: 10 });
+    const client = new Client({ name: "example-client", version: "1.0.0" });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(b);
+    await client.connect(a);
+    try {
+      const result = await client.callTool({ name: "zeek_query_connections", arguments: { proto: "udp", limit: 10 } });
+      expect(result.isError).not.toBe(true);
+      expect(JSON.parse((result.content as Array<{ text: string }>)[0].text)).toEqual({ count: 0, connections: [], truncated: true });
+      for (const [name, args] of [
+        ["zeek_network_baseline", { timeFrom: "2024-02-01T12:00:00Z", timeTo: "2024-02-01T12:30:00Z" }],
+        ["zeek_investigate_host", { ip: "192.0.2.1" }],
+        ["zeek_investigate_uid", { uid: "example-missing" }],
+      ] as const) {
+        const analysis = await client.callTool({ name, arguments: args });
+        expect(analysis.isError).not.toBe(true);
+        expect(JSON.parse((analysis.content as Array<{ text: string }>)[0].text).truncated).toBe(true);
+      }
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });

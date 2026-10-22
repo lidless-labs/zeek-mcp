@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 
 export function registerHttpTools(
   server: McpServer,
@@ -22,6 +22,7 @@ export function registerHttpTools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(100).describe("Max results"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -67,7 +68,7 @@ export function registerHttpTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               count: records.length,
               requests: records.map(formatHttp),
             }, null, 2),
@@ -89,6 +90,7 @@ export function registerHttpTools(
       timeFrom: z.string().optional().describe("Start time (ISO 8601)"),
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -155,7 +157,7 @@ export function registerHttpTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalAnalyzed: records.length,
               suspiciousCount: suspicious.length,
               suspicious: suspicious.slice(0, 100),

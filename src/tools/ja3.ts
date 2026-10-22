@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 // Known malicious/suspicious JA3 hashes
 // Source: https://sslbl.abuse.ch/ja3-fingerprints/ and community research
 export const KNOWN_MALICIOUS_JA3: Record<string, string> = {
@@ -36,6 +36,7 @@ export function registerJa3Tools(
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
       limit: z.number().int().min(1).max(10000).default(500).describe("Max records to analyze"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const filters: FilterDef[] = [];
@@ -131,7 +132,7 @@ export function registerJa3Tools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalRecordsAnalyzed: records.length,
               uniqueFingerprints: fingerprints.length,
               maliciousHits: maliciousHits.length,
@@ -177,6 +178,7 @@ export function registerJa3Tools(
         label: z.string().describe("Description of what this hash identifies"),
       })).optional().describe("Additional JA3 hashes to hunt for beyond the built-in database"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -237,7 +239,7 @@ export function registerJa3Tools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalRecordsAnalyzed: records.length,
               knownMaliciousHashes: Object.keys(huntHashes).length,
               ja3Hits: hits.length,

@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
-import { executeQuery } from "../query/engine.js";
+import { queryMetadata, executeQuery } from "../query/engine.js";
 import { topN, groupBy, sumField, countUnique, avgField } from "../query/aggregation.js";
 
 export function registerBaselineTools(
@@ -15,6 +15,7 @@ export function registerBaselineTools(
       timeFrom: z.string().optional().describe("Baseline period start (ISO 8601)"),
       timeTo: z.string().optional().describe("Baseline period end (ISO 8601)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -26,7 +27,7 @@ export function registerBaselineTools(
 
         if (records.length === 0) {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify({ message: "No connection records found for baseline period" }) }],
+            content: [{ type: "text" as const, text: JSON.stringify({ ...queryMetadata(records), message: "No connection records found for baseline period" }) }],
           };
         }
 
@@ -120,7 +121,7 @@ export function registerBaselineTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(baseline, null, 2),
+            text: JSON.stringify({ ...baseline, ...queryMetadata(records) }, null, 2),
           }],
         };
       } catch (error) {
@@ -140,6 +141,7 @@ export function registerBaselineTools(
       timeTo: z.string().optional().describe("Current period end (ISO 8601)"),
       stdDevThreshold: z.number().min(1).max(10).default(3).describe("Standard deviations from mean to flag (default 3)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const records = await executeQuery(config, {
@@ -151,7 +153,7 @@ export function registerBaselineTools(
 
         if (records.length < 10) {
           return {
-            content: [{ type: "text" as const, text: JSON.stringify({ message: "Insufficient data for outlier detection (need 10+ records)" }) }],
+            content: [{ type: "text" as const, text: JSON.stringify({ ...queryMetadata(records), message: "Insufficient data for outlier detection (need 10+ records)" }) }],
           };
         }
 
@@ -266,7 +268,7 @@ export function registerBaselineTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: JSON.stringify({ ...queryMetadata(records),
               totalConnectionsAnalyzed: records.length,
               uniqueHosts: srcBytes.size,
               stdDevThreshold: params.stdDevThreshold,

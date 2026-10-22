@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { ZeekConfig } from "../config.js";
 import type { LogType } from "../types.js";
-import { executeQuery, type FilterDef } from "../query/engine.js";
+import { queryMetadata, executeQuery, type FilterDef } from "../query/engine.js";
 import { topN, sumField, countUnique } from "../query/aggregation.js";
 
 export function registerInvestigationTools(
@@ -17,6 +17,7 @@ export function registerInvestigationTools(
       timeFrom: z.string().optional().describe("Start time (ISO 8601)"),
       timeTo: z.string().optional().describe("End time (ISO 8601)"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const timeRange = {
@@ -125,7 +126,7 @@ export function registerInvestigationTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(investigation, null, 2),
+            text: JSON.stringify({ ...investigation, ...queryMetadata(connSrc, connDst, dnsRecords, httpRecords, sslRecords, sshRecords, noticeRecords, softwareRecords) }, null, 2),
           }],
         };
       } catch (error) {
@@ -143,6 +144,7 @@ export function registerInvestigationTools(
     {
       uid: z.string().describe("Zeek connection UID to investigate"),
     },
+    { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     async (params) => {
       try {
         const uidFilter: FilterDef[] = [
@@ -187,7 +189,7 @@ export function registerInvestigationTools(
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(session, null, 2),
+            text: JSON.stringify({ ...session, ...queryMetadata(...results.map((result) => result.records)) }, null, 2),
           }],
         };
       } catch (error) {
