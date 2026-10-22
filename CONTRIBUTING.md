@@ -20,7 +20,6 @@ zeek-mcp is a Model Context Protocol server that exposes Zeek and Suricata netwo
 
 - Personal details, hostnames, account IDs, real private IPs, or live credentials in code, tests, or sample data. Use `192.0.2.0/24` (RFC 5737) and generic hostnames in examples. CI rejects leaks.
 - Tools that write to Zeek or Suricata data on disk, or that capture or modify live traffic. zeek-mcp is read-only against telemetry; the only writes are the explicit, credentialed TheHive/MISP tools.
-- AI co-authorship trailers on commits (`Co-Authored-By: <model>`). Conventional commits only.
 
 ## Local dev
 
@@ -53,6 +52,17 @@ Tools are grouped by domain under `src/tools/<domain>.ts`, each file exporting a
 3. Add a row to the tool table in `README.md` **and** update the tool count in the header and the `## Tools` lede so they stay accurate.
 4. Add a test under `tests/`.
 5. Add a `## [Unreleased]` entry to `CHANGELOG.md`.
+
+## Commits and pull requests
+
+- Use conventional commit messages (`fix:`, `feat:`, `docs:`, `ci:`, `test:` and so on).
+- End every commit message with this trailer line:
+
+  ```
+  Co-Authored-By: Claude Duet <noreply@anthropic.com>
+  ```
+
+- Every pull request body says what changed, why, and the exact tests you ran (commands and results). Link the issue it fixes, for example `Fixes #10`.
 
 ## Filing issues
 
