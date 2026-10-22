@@ -1,3 +1,4 @@
+import packageJson from "../package.json";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getConfig } from "./config.js";
@@ -25,7 +26,7 @@ import { registerPrompts } from "./prompts.js";
 
 const server = new McpServer({
   name: "zeek-mcp",
-  version: "3.0.0",
+  version: packageJson.version,
   description:
     "MCP server for Zeek + Suricata NIDS with TheHive/MISP integration - query, analyze, hunt, and respond via AI",
 });

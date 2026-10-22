@@ -34,8 +34,8 @@ type ToolHandler = (params: Record<string, unknown>) => Promise<unknown>;
 function makeServerStub() {
   const handlers: Record<string, ToolHandler> = {};
   const server = {
-    tool: (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {
-      handlers[name] = handler;
+    tool: (name: string, _desc: string, _schema: unknown, ...args: unknown[]) => {
+      handlers[name] = args.at(-1) as ToolHandler;
     },
   };
   return { server, handlers };
@@ -45,6 +45,7 @@ let tmpPcapDir: string;
 let registerPcapTools: typeof import("../src/tools/pcap.js")["registerPcapTools"];
 
 beforeEach(async () => {
+  vi.stubEnv("ZEEK_ALLOW_MUTATION", "1");
   execFileCalls.length = 0;
   tmpPcapDir = fs.mkdtempSync(path.join(process.cwd(), "test-data", "pcap-inj-"));
   process.env.PCAP_DIR = tmpPcapDir;
@@ -57,6 +58,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   fs.rmSync(tmpPcapDir, { recursive: true, force: true });
   delete process.env.PCAP_DIR;
   delete process.env.ZEEK_CONTAINER;
@@ -80,7 +82,7 @@ describe("pcap_analyze command injection / path traversal", () => {
     fs.writeFileSync(evilPath, "x");
 
     const analyze = getAnalyze();
-    await analyze({ filename: evil, timeoutSeconds: 10 });
+    await analyze({ confirm: true, filename: evil, timeoutSeconds: 10 });
 
     // execFile must have been invoked (host branch) with zeek + discrete args.
     expect(execFileCalls.length).toBeGreaterThan(0);
@@ -99,16 +101,16 @@ describe("pcap_analyze command injection / path traversal", () => {
     const analyze = getAnalyze();
 
     // A script name with shell metacharacters must be rejected by the allowlist.
-    const bad = await analyze({ filename: pcap, scripts: ["evil; rm -rf /"], timeoutSeconds: 10 });
+    const bad = await analyze({ confirm: true, filename: pcap, scripts: ["evil; rm -rf /"], timeoutSeconds: 10 });
     expect(JSON.stringify(bad)).toContain("Invalid script name");
     expect(execFileCalls.length).toBe(0);
 
     // A traversal script must also be rejected.
-    const traversal = await analyze({ filename: pcap, scripts: ["../../etc/passwd"], timeoutSeconds: 10 });
+    const traversal = await analyze({ confirm: true, filename: pcap, scripts: ["../../etc/passwd"], timeoutSeconds: 10 });
     expect(JSON.stringify(traversal)).toContain("Invalid script name");
 
     // Valid namespaced scripts pass and arrive as discrete argv elements.
-    await analyze({ filename: pcap, scripts: ["protocols/ssl/log-hostcerts-only"], timeoutSeconds: 10 });
+    await analyze({ confirm: true, filename: pcap, scripts: ["protocols/ssl/log-hostcerts-only"], timeoutSeconds: 10 });
     const zeekCall = execFileCalls.find((c) => c.file === "/usr/local/zeek/bin/zeek");
     expect(zeekCall).toBeDefined();
     expect(zeekCall!.args).toContain("protocols/ssl/log-hostcerts-only");
@@ -116,14 +118,14 @@ describe("pcap_analyze command injection / path traversal", () => {
 
   it("rejects absolute paths outside PCAP_DIR", async () => {
     const analyze = getAnalyze();
-    const res = await analyze({ filename: "/etc/passwd", timeoutSeconds: 10 });
+    const res = await analyze({ confirm: true, filename: "/etc/passwd", timeoutSeconds: 10 });
     expect(JSON.stringify(res)).toContain("Path traversal blocked");
     expect(execFileCalls.length).toBe(0);
   });
 
   it("rejects relative traversal escaping PCAP_DIR", async () => {
     const analyze = getAnalyze();
-    const res = await analyze({ filename: "../../../etc/passwd", timeoutSeconds: 10 });
+    const res = await analyze({ confirm: true, filename: "../../../etc/passwd", timeoutSeconds: 10 });
     expect(JSON.stringify(res)).toContain("Path traversal blocked");
     expect(execFileCalls.length).toBe(0);
   });
