@@ -1,3 +1,6 @@
+export const DEFAULT_MAX_SCAN = 1000000;
+export const DEFAULT_MAX_DATE_RANGE_DAYS = 31;
+
 export interface ZeekConfig {
   logDir: string;
   logArchive: string;
@@ -25,19 +28,12 @@ export function getConfig(): ZeekConfig {
     );
   }
 
-  return { logDir, logArchive, logFormat, maxResults,
-    maxScan: positiveInteger("ZEEK_MAX_SCAN", 1000000),
-    maxDateRangeDays: positiveInteger("ZEEK_MAX_DATE_RANGE_DAYS", 31),
+  return {
+    logDir, logArchive, logFormat, maxResults,
+    maxScan: positiveInteger("ZEEK_MAX_SCAN", DEFAULT_MAX_SCAN),
+    maxDateRangeDays: positiveInteger("ZEEK_MAX_DATE_RANGE_DAYS", DEFAULT_MAX_DATE_RANGE_DAYS),
   };
 }
-
-/**
- * Suricata configuration is handled by getSuricataConfig() in tools/suricata.ts.
- * Environment variables:
- * - SURICATA_EVE_LOG: Path to eve.json (default: /opt/nids/suricata/logs/eve.json)
- * - SURICATA_FAST_LOG: Path to fast.log (default: /opt/nids/suricata/logs/fast.log)
- * - SURICATA_RULES_DIR: Path to rules directory (default: /opt/nids/suricata/rules)
- */
 
 function positiveInteger(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -48,3 +44,11 @@ function positiveInteger(name: string, fallback: number): number {
   }
   return value;
 }
+
+/**
+ * Suricata configuration is handled by getSuricataConfig() in tools/suricata.ts.
+ * Environment variables:
+ * - SURICATA_EVE_LOG: Path to eve.json (default: /opt/nids/suricata/logs/eve.json)
+ * - SURICATA_FAST_LOG: Path to fast.log (default: /opt/nids/suricata/logs/fast.log)
+ * - SURICATA_RULES_DIR: Path to rules directory (default: /opt/nids/suricata/rules)
+ */

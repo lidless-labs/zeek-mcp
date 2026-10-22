@@ -46,7 +46,7 @@ export async function executeQuery(
     if (options.filters && !options.filters.every((filter) => applyFilter(record, filter))) return;
     if (boundedSort) newest.add({ record, sequence: sequence++ });
     else filtered.push(record);
-  });
+  }, boundedSort);
   const records: LogRecords = boundedSort
     ? newest.sorted().map((entry) => entry.record)
     : filtered.sort(compare).slice(0, limit);
@@ -55,8 +55,8 @@ export async function executeQuery(
 }
 
 // Tools must keep this metadata when formatting or aggregating the record arrays.
-export function queryMetadata(...results: ZeekRecord[][]): { truncated?: true } {
-  return results.some((records) => (records as LogRecords).truncated) ? { truncated: true } : {};
+export function queryMetadata(...results: LogRecords[]): { truncated?: true } {
+  return results.some((records) => records.truncated) ? { truncated: true } : {};
 }
 
 function applyFilter(record: ZeekRecord, filter: FilterDef): boolean {

@@ -14,6 +14,7 @@ import {
   topN,
   getNestedValue,
 } from "../src/query/aggregation.js";
+import { gzipSync } from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { BoundedBuffer } from "../src/query/bounded-buffer.js";
 import * as fs from "node:fs";
@@ -230,6 +231,21 @@ describe("bounded streaming queries", () => {
       BoundedBuffer.prototype.add = add;
     }
   }, 15000);
+
+  it("scans current data and later archive rotations first within a global budget", async () => {
+    const base = new Date("2024-02-01T12:00:00").getTime() / 1000;
+    const config = fixture([{ ts: base + 100, uid: "example-current" }]);
+    const archive = path.join(config.logArchive, "2024-02-01");
+    fs.mkdirSync(archive);
+    fs.writeFileSync(path.join(archive, "conn.12:00:00-13:00:00.log"), JSON.stringify({ ts: base + 50, uid: "example-later" }));
+    fs.writeFileSync(path.join(archive, "conn.11:00:00-12:00:00.log"), JSON.stringify({ ts: base, uid: "example-earlier" }));
+    const records = await executeQuery({ ...config, maxScan: 2 }, { logType: "conn", timeFrom: new Date(base * 1000).toISOString(), timeTo: new Date((base + 1800) * 1000).toISOString(), limit: 10 });
+    expect(records.truncated).toBe(true);
+    expect(records.map((r) => r.uid)).toEqual(["example-current", "example-later"]);
+    fs.writeFileSync(path.join(config.logDir, "conn.log.gz"), gzipSync(JSON.stringify({ ts: base, uid: "example-compressed" })));
+    const current = await executeQuery({ ...config, maxScan: 1 }, { logType: "conn", limit: 10 });
+    expect(current.map((r) => r.uid)).toEqual(["example-current"]);
+  });
 
   it.each([undefined, "duration"])("stops at the scan cap before filtering and exposes truncation (sort=%s)", async (sortBy) => {
     const config = fixture(Array.from({ length: 30 }, (_, i) => ({ ts: i, duration: 30 - i, proto: i >= 10 ? "udp" : "tcp" })));

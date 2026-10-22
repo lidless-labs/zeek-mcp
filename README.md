@@ -324,12 +324,12 @@ conn, dns, http, ssl, files, notice, weird, x509, smtp, ssh, dpd, software, dhcp
 | `ZEEK_LOG_ARCHIVE` | `/opt/zeek/logs` | Path to archived/rotated logs |
 | `ZEEK_LOG_FORMAT` | `json` | Log format: `json` or `tsv` |
 | `ZEEK_MAX_RESULTS` | `1000` | Maximum results per query |
-| `ZEEK_MAX_SCAN` | `1000000` | Maximum input lines scanned per query across selected files, including comments and malformed lines. Queries stop at this budget and report `truncated: true`. |
+| `ZEEK_MAX_SCAN` | `1000000` | Maximum input lines scanned per query across selected files, including comments and malformed lines. Queries stop at this budget and report `truncated: true`. Read failures also report incomplete results with this flag. |
 | `ZEEK_MAX_DATE_RANGE_DAYS` | `31` | Maximum calendar dates in a query window. Larger ranges are rejected before log-directory access. |
 
-Default timestamp-descending queries retain at most the requested result limit while scanning. Other sort fields and ascending queries retain at most the scan budget before sorting. A truncated response describes only the scanned prefix, so its latest records and analysis summaries may be incomplete. Reaching the scan budget reports truncation conservatively, even if the file ends at that line.
+Default timestamp-descending queries retain at most the requested result limit while scanning. Other sort fields and ascending queries retain at most the scan budget before sorting. A truncated response describes only the scanned prefix, so its latest records and analysis summaries may be incomplete. Default timestamp queries scan current logs first, then archive dates and rotation filenames in descending order. Reaching the scan budget reports truncation conservatively, even if the file ends at that line. Budgets apply per query: host and UID investigations run several bounded queries. The separate DHCP readers do not use these query-engine budgets.
 
-Archive dates and rotated filename clocks are interpreted in the server's local timezone. Set `TZ` to match the sensor when reading its archives. Files with rotation intervals outside the requested window are skipped, except on dates with a daylight-saving transition.
+Archive dates and rotated filename clocks are interpreted in the server's local timezone. Set `TZ` to match the sensor when reading its archives. Files closed before the requested window starts are skipped, except on dates with a daylight-saving transition. Later rotations remain eligible because connections can be logged after their first-packet timestamp. Archive selection still covers only dates in the requested window, so delayed records written to later date directories can be missed.
 
 ### Suricata
 

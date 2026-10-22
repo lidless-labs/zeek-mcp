@@ -289,6 +289,25 @@ describe("streaming log bounds", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("retains later rotations containing connections that started in the window", async () => {
+    const root = fixture();
+    const archive = path.join(root, "2024-02-01");
+    fs.mkdirSync(archive);
+    const ts = new Date("2024-02-01T12:10:00").getTime() / 1000;
+    fs.writeFileSync(path.join(archive, "conn.13:00:00-14:00:00.log.gz"), gzipSync(JSON.stringify({ ts, duration: 3900 })));
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100 }, "conn", new Date("2024-02-01T12:00:00").toISOString(), new Date("2024-02-01T12:30:00").toISOString());
+    expect(records.map((r) => r.ts)).toEqual([ts]);
+  });
+
+  it("marks an incomplete gzip read as truncated", async () => {
+    const root = fixture();
+    const compressed = gzipSync(Array.from({ length: 10000 }, (_, ts) => JSON.stringify({ ts, uid: `example-${ts}` })).join("\n"));
+    compressed[compressed.length - 8] ^= 255;
+    fs.writeFileSync(path.join(root, "conn.log.gz"), compressed);
+    const records = await queryLog({ logDir: root, logArchive: root, logFormat: "json", maxResults: 100 }, "conn");
+    expect(records.truncated).toBe(true);
+  });
+
   it("skips rotated files outside the window before opening them", async () => {
     const root = fixture();
     const archive = path.join(root, "2024-02-01");

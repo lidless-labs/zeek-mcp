@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import * as zlib from "node:zlib";
 import type { ZeekRecord, LogType } from "../types.js";
-import type { ZeekConfig } from "../config.js";
+import { DEFAULT_MAX_SCAN, DEFAULT_MAX_DATE_RANGE_DAYS, type ZeekConfig } from "../config.js";
 import { parseJsonLine } from "./json.js";
 import { parseTsvHeader, parseTsvRecord, type TsvHeader } from "./tsv.js";
 
@@ -75,7 +75,7 @@ export function resolveLogPath(
     if (fs.existsSync(gzPath)) {
       paths.push(gzPath);
     }
-    return paths;
+    return paths.sort();
   }
 
   const archivePath = path.join(config.logArchive, date, filename);
@@ -106,7 +106,7 @@ export function resolveLogPath(
     }
   }
 
-  return paths;
+  return paths.sort();
 }
 
 export type LogRecords = ZeekRecord[] & { truncated?: true };
@@ -118,17 +118,20 @@ export async function scanLogs(
   timeFrom: string | undefined,
   timeTo: string | undefined,
   visit: (record: ZeekRecord) => void,
+  newestFirst = false,
 ): Promise<{ truncated: boolean }> {
-  const dates = getDateRange(timeFrom, timeTo, config.maxDateRangeDays ?? 31);
+  const dates = getDateRange(timeFrom, timeTo, config.maxDateRangeDays ?? DEFAULT_MAX_DATE_RANGE_DAYS);
   const fromTs = timeFrom ? new Date(timeFrom).getTime() / 1000 : -Infinity;
   const toTs = timeTo ? new Date(timeTo).getTime() / 1000 : Infinity;
-  const maxScan = config.maxScan ?? 1000000;
+  const maxScan = config.maxScan ?? DEFAULT_MAX_SCAN;
   let scanned = 0;
-  const selections: Array<string | undefined> = [...dates, undefined];
+  let incomplete = false;
+  const selections: Array<string | undefined> = newestFirst ? [undefined, ...dates.slice().reverse()] : [...dates, undefined];
   for (const date of selections) {
     const paths = resolveLogPath(config, logType, date);
+    if (newestFirst && date) paths.reverse();
     for (const file of paths) {
-      if (date && !archiveOverlaps(file, date, fromTs, toTs)) continue;
+      if (date && !archiveOverlaps(file, date, fromTs)) continue;
       // Keep IO failures separate from exceptions raised by query consumers.
       const readable = async function* () {
         try {
@@ -138,7 +141,8 @@ export async function scanLogs(
             return true;
           });
         } catch {
-          // Preserve the existing policy of skipping unreadable logs.
+          // Continue other files, but report incomplete telemetry.
+          incomplete = true;
         }
       };
       for await (const record of readable()) {
@@ -148,7 +152,7 @@ export async function scanLogs(
       if (scanned >= maxScan) return { truncated: true };
     }
   }
-  return { truncated: false };
+  return { truncated: incomplete };
 }
 
 export async function queryLog(
@@ -163,7 +167,7 @@ export async function queryLog(
   return records;
 }
 
-function archiveOverlaps(file: string, date: string, fromTs: number, toTs: number): boolean {
+function archiveOverlaps(file: string, date: string, fromTs: number): boolean {
   const range = /\.(\d{2}:\d{2}:\d{2})-(\d{2}:\d{2}:\d{2})\.log(?:\.gz)?$/.exec(file);
   if (!range) return true;
   // Zeek's archive dates and rotation clocks use the sensor's local timezone.
@@ -175,10 +179,12 @@ function archiveOverlaps(file: string, date: string, fromTs: number, toTs: numbe
   const end = new Date(`${date}T${range[2]}`);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return true;
   if (end <= start) end.setDate(end.getDate() + 1);
-  return start.getTime() / 1000 <= toTs && end.getTime() / 1000 >= fromTs;
+  // A connection can start before the rotation in which it is finally logged.
+  // Only a file closed before the query starts is safe to skip.
+  return end.getTime() / 1000 >= fromTs;
 }
 
-function getDateRange(timeFrom?: string, timeTo?: string, maxDays = 31): string[] {
+function getDateRange(timeFrom?: string, timeTo?: string, maxDays = DEFAULT_MAX_DATE_RANGE_DAYS): string[] {
   if (!timeFrom && !timeTo) return [];
   const start = new Date(timeFrom ?? timeTo!);
   const end = timeTo ? new Date(timeTo) : new Date();
