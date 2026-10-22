@@ -45,7 +45,7 @@ npm run build
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - Zeek sensor generating logs (JSON or TSV format)
 - Suricata (optional, for IDS alert correlation)
 
