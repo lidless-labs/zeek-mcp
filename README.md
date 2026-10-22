@@ -275,18 +275,18 @@ zeek-mcp registers **39 tools**. Read-only Zeek/Suricata query and analysis tool
 | Tool | Description |
 |------|-------------|
 | `pcap_list` | List available PCAP files in the capture directory with sizes and timestamps |
-| `pcap_analyze` | Replay a PCAP file through Zeek and return the generated log summary |
+| `pcap_analyze` | Replay a PCAP file through Zeek and return the generated log summary. Requires [mutation gate](#mutation-gate). |
 
 ### Incident Response
 
 | Tool | Description |
 |------|-------------|
-| `thehive_create_alert` | Create a TheHive alert from NIDS findings (observables, severity, TLP) |
-| `thehive_create_case` | Create a TheHive case for in-depth, collaborative investigation |
+| `thehive_create_alert` | Create a TheHive alert from NIDS findings (observables, severity, TLP). Requires [mutation gate](#mutation-gate). |
+| `thehive_create_case` | Create a TheHive case for in-depth, collaborative investigation. Requires [mutation gate](#mutation-gate). |
 | `thehive_search_cases` | Search existing TheHive cases and alerts for related work or duplicates |
 | `misp_search_iocs` | Search MISP for IOCs (IPs, domains, hashes, URLs) and return matching events |
 | `misp_bulk_lookup` | Check multiple IOCs against MISP in a single call |
-| `misp_add_event` | Create a MISP event from NIDS findings to share threat intelligence |
+| `misp_add_event` | Create a MISP event from NIDS findings to share threat intelligence. Requires [mutation gate](#mutation-gate). |
 
 ### Sensor Management
 

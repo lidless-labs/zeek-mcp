@@ -61,3 +61,28 @@ describe.each(tools)("%s mutation gate", (name, args) => {
     }
   });
 });
+
+it("publishes the state and external-system annotations of gated tools", async () => {
+  const server = new McpServer({ name: "example", version: "1.0.0" });
+  registerTheHiveTools(server);
+  registerMispTools(server);
+  registerPcapTools(server);
+  const client = new Client({ name: "example-client", version: "1.0.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const listed = await client.listTools();
+    for (const [name] of tools) {
+      expect(listed.tools.find((tool) => tool.name === name)?.annotations).toEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: name !== "pcap_analyze",
+      });
+    }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});

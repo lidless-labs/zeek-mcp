@@ -70,7 +70,7 @@ export function registerTheHiveTools(server: McpServer): void {
 
   server.tool(
     "thehive_create_alert",
-    "Create a TheHive alert from NIDS findings. Includes observables (IPs, domains, hashes), severity, TLP marking, and alert description. Use after investigating suspicious activity in Zeek/Suricata logs.",
+    "Create a TheHive alert from NIDS findings. Includes observables (IPs, domains, hashes), severity, TLP marking, and alert description. Use after investigating suspicious activity in Zeek/Suricata logs. Requires ZEEK_ALLOW_MUTATION=1 and confirm: true.",
     {
       confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       title: z.string().describe("Alert title"),
@@ -167,7 +167,7 @@ export function registerTheHiveTools(server: McpServer): void {
 
   server.tool(
     "thehive_create_case",
-    "Create a TheHive case for in-depth investigation. Escalate from alerts or create directly from significant NIDS findings. Cases support tasks, observables, and collaborative investigation.",
+    "Create a TheHive case for in-depth investigation. Escalate from alerts or create directly from significant NIDS findings. Cases support tasks, observables, and collaborative investigation. Requires ZEEK_ALLOW_MUTATION=1 and confirm: true.",
     {
       confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       title: z.string().describe("Case title"),

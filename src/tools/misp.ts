@@ -243,7 +243,7 @@ export function registerMispTools(server: McpServer): void {
 
   server.tool(
     "misp_add_event",
-    "Create a MISP event from NIDS findings to share threat intelligence. Includes attributes (IOCs), tags, and threat level classification.",
+    "Create a MISP event from NIDS findings to share threat intelligence. Includes attributes (IOCs), tags, and threat level classification. Requires ZEEK_ALLOW_MUTATION=1 and confirm: true.",
     {
       confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       info: z.string().describe("Event description/title"),
