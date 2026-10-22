@@ -127,30 +127,43 @@ export async function scanLogs(
   let scanned = 0;
   let incomplete = false;
   const selections: Array<string | undefined> = newestFirst ? [undefined, ...dates.slice().reverse()] : [...dates, undefined];
+  const primary: string[] = [];
+  const delayed: string[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const currentOverlaps = toTs >= today.getTime() / 1000 && fromTs < tomorrow.getTime() / 1000;
   for (const date of selections) {
     const paths = resolveLogPath(config, logType, date);
     if (newestFirst && date) paths.reverse();
     for (const file of paths) {
-      if (date && !archiveOverlaps(file, date, fromTs)) continue;
-      // Keep IO failures separate from exceptions raised by query consumers.
-      const readable = async function* () {
-        try {
-          yield* streamLogFile(file, config.logFormat, () => {
-            if (scanned >= maxScan) return false;
-            scanned++;
-            return true;
-          });
-        } catch {
-          // Continue other files, but report incomplete telemetry.
-          incomplete = true;
-        }
-      };
-      for await (const record of readable()) {
-        if ((!timeFrom || record.ts >= fromTs) && (!timeTo || record.ts <= toTs)) visit(record);
-        if (scanned >= maxScan) return { truncated: true };
+      const rotation = date ? rotationInterval(file, date) : undefined;
+      if (rotation && rotation.end < fromTs) continue;
+      // Read the known window before spending budget on delayed records.
+      const defer = newestFirst && (rotation ? rotation.start > toTs : !date && !currentOverlaps);
+      (defer ? delayed : primary).push(file);
+    }
+  }
+  for (const file of [...primary, ...delayed]) {
+    // Keep IO failures separate from exceptions raised by query consumers.
+    const readable = async function* () {
+      try {
+        yield* streamLogFile(file, config.logFormat, () => {
+          if (scanned >= maxScan) return false;
+          scanned++;
+          return true;
+        });
+      } catch {
+        // Continue other files, but report incomplete telemetry.
+        incomplete = true;
       }
+    };
+    for await (const record of readable()) {
+      if ((!timeFrom || record.ts >= fromTs) && (!timeTo || record.ts <= toTs)) visit(record);
       if (scanned >= maxScan) return { truncated: true };
     }
+    if (scanned >= maxScan) return { truncated: true };
   }
   return { truncated: incomplete };
 }
@@ -167,21 +180,21 @@ export async function queryLog(
   return records;
 }
 
-function archiveOverlaps(file: string, date: string, fromTs: number): boolean {
+function rotationInterval(file: string, date: string): { start: number; end: number } | undefined {
   const range = /\.(\d{2}:\d{2}:\d{2})-(\d{2}:\d{2}:\d{2})\.log(?:\.gz)?$/.exec(file);
-  if (!range) return true;
+  if (!range) return undefined;
   // Zeek's archive dates and rotation clocks use the sensor's local timezone.
   const midnight = new Date(`${date}T00:00:00`);
   const evening = new Date(`${date}T23:59:59`);
   // Repeated or missing clock hours make filename-only pruning ambiguous.
-  if (midnight.getTimezoneOffset() !== evening.getTimezoneOffset()) return true;
+  if (midnight.getTimezoneOffset() !== evening.getTimezoneOffset()) return undefined;
   const start = new Date(`${date}T${range[1]}`);
   const end = new Date(`${date}T${range[2]}`);
-  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return true;
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return undefined;
   if (end <= start) end.setDate(end.getDate() + 1);
   // A connection can start before the rotation in which it is finally logged.
   // Only a file closed before the query starts is safe to skip.
-  return end.getTime() / 1000 >= fromTs;
+  return { start: start.getTime() / 1000, end: end.getTime() / 1000 };
 }
 
 function getDateRange(timeFrom?: string, timeTo?: string, maxDays = DEFAULT_MAX_DATE_RANGE_DAYS): string[] {

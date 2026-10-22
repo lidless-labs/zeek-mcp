@@ -233,9 +233,12 @@ describe("bounded streaming queries", () => {
   }, 15000);
 
   it("scans current data and later archive rotations first within a global budget", async () => {
-    const base = new Date("2024-02-01T12:00:00").getTime() / 1000;
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const base = today.getTime() / 1000;
     const config = fixture([{ ts: base + 100, uid: "example-current" }]);
-    const archive = path.join(config.logArchive, "2024-02-01");
+    const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const archive = path.join(config.logArchive, date);
     fs.mkdirSync(archive);
     fs.writeFileSync(path.join(archive, "conn.12:00:00-13:00:00.log"), JSON.stringify({ ts: base + 50, uid: "example-later" }));
     fs.writeFileSync(path.join(archive, "conn.11:00:00-12:00:00.log"), JSON.stringify({ ts: base, uid: "example-earlier" }));
@@ -245,6 +248,18 @@ describe("bounded streaming queries", () => {
     fs.writeFileSync(path.join(config.logDir, "conn.log.gz"), gzipSync(JSON.stringify({ ts: base, uid: "example-compressed" })));
     const current = await executeQuery({ ...config, maxScan: 1 }, { logType: "conn", limit: 10 });
     expect(current.map((r) => r.uid)).toEqual(["example-current"]);
+  });
+
+  it("prioritizes a historical window before large current and later-rotation inputs", async () => {
+    const base = new Date("2024-02-01T12:00:00").getTime() / 1000;
+    const config = fixture(Array.from({ length: 10 }, (_, i) => ({ ts: base + 86400 + i })));
+    const archive = path.join(config.logArchive, "2024-02-01");
+    fs.mkdirSync(archive);
+    fs.writeFileSync(path.join(archive, "conn.13:00:00-14:00:00.log"), Array.from({ length: 10 }, (_, i) => JSON.stringify({ ts: base + 3600 + i })).join("\n"));
+    fs.writeFileSync(path.join(archive, "conn.12:00:00-13:00:00.log"), JSON.stringify({ ts: base + 60, uid: "example-in-window" }));
+    const records = await executeQuery({ ...config, maxScan: 3 }, { logType: "conn", timeFrom: new Date(base * 1000).toISOString(), timeTo: new Date((base + 1800) * 1000).toISOString(), limit: 10 });
+    expect(records.truncated).toBe(true);
+    expect(records.map((r) => r.uid)).toEqual(["example-in-window"]);
   });
 
   it.each([undefined, "duration"])("stops at the scan cap before filtering and exposes truncation (sort=%s)", async (sortBy) => {
