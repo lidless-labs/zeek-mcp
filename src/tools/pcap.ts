@@ -1,3 +1,4 @@
+import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import * as fs from "node:fs";
@@ -52,6 +53,7 @@ function validateScriptName(script: string): boolean {
 
 export function registerPcapTools(server: McpServer): void {
   const config = getPcapConfig();
+  const allowMutation = process.env.ZEEK_ALLOW_MUTATION === "1";
 
   server.tool(
     "pcap_list",
@@ -109,13 +111,17 @@ export function registerPcapTools(server: McpServer): void {
 
   server.tool(
     "pcap_analyze",
-    "Replay a PCAP file through Zeek and return the generated log summary. Creates connection, DNS, HTTP, SSL, and other logs from the packet capture. Useful for forensic analysis of captured traffic.",
+    "Replay a PCAP file through Zeek and return the generated log summary. Creates connection, DNS, HTTP, SSL, and other logs from the packet capture. Useful for forensic analysis of captured traffic. Requires ZEEK_ALLOW_MUTATION=1 and confirm: true.",
     {
+      confirm: z.boolean().default(false).describe("Confirm this state-changing operation. Requires ZEEK_ALLOW_MUTATION=1."),
       filename: z.string().describe("PCAP filename (from pcap_list) or full path"),
       scripts: z.array(z.string()).optional().describe("Additional Zeek scripts to load (e.g. 'protocols/ssl/log-hostcerts-only')"),
       timeoutSeconds: z.number().int().min(10).max(600).default(120).describe("Analysis timeout in seconds"),
     },
+    { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     async (params) => {
+      const gate = checkMutationAllowed(allowMutation, params, "pcap_analyze");
+      if (!gate.allowed) return gate.response;
       try {
         // Validate scripts to prevent command injection
         if (params.scripts) {
