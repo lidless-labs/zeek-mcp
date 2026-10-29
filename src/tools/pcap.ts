@@ -140,7 +140,7 @@ export function registerPcapTools(server: McpServer): void {
         // After resolution the path MUST live inside pcapDir or we reject it, so a
         // caller can never read or feed Zeek an arbitrary file on the host.
         const resolvedDir = path.resolve(config.pcapDir);
-        const pcapPath = path.isAbsolute(params.filename)
+        let pcapPath = path.isAbsolute(params.filename)
           ? path.resolve(params.filename)
           : path.resolve(resolvedDir, params.filename);
 
@@ -156,6 +156,26 @@ export function registerPcapTools(server: McpServer): void {
             content: [{ type: "text" as const, text: `PCAP file not found: ${pcapPath}` }],
             isError: true,
           };
+        }
+
+        if (!config.zeekContainer) {
+          // Resolve symlinks before host replay. Keep Docker's existing /pcaps
+          // mount mapping independent of host filesystem canonical paths.
+          const canonicalRoot = fs.realpathSync(resolvedDir);
+          pcapPath = fs.realpathSync(pcapPath);
+          const relative = path.relative(canonicalRoot, pcapPath);
+          if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+            return {
+              content: [{ type: "text" as const, text: "Path traversal blocked: capture resolves outside the allowed PCAP directory." }],
+              isError: true,
+            };
+          }
+          if (!fs.statSync(pcapPath).isFile()) {
+            return {
+              content: [{ type: "text" as const, text: "PCAP input must be a regular file." }],
+              isError: true,
+            };
+          }
         }
 
         // Create output directory for this analysis
