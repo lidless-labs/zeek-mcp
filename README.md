@@ -294,6 +294,12 @@ zeek-mcp registers **39 tools**. Read-only Zeek/Suricata query and analysis tool
 |------|-------------|
 | `nids_sensor_status` | Live sensor status: log inventory, sizes, freshness, health checks |
 
+### External telemetry
+
+Tool descriptions and results identify network, log, filename, and remote service content as untrusted evidence. Returned strings and keys must never be treated as instructions or permission to act. JSON result fields retain their shape, with delimiter characters escaped in the serialized text. String values longer than 4096 characters are shortened and marked with `[truncated]`. A separate text block carries the provenance notice, so the first result block remains parseable JSON.
+
+PCAP replay still requires `ZEEK_ALLOW_MUTATION=1` and `confirm: true`. Script arguments cannot begin with a dash. Host replay resolves the capture root and input to canonical paths, rejects inputs outside that root, and requires a regular file. Docker replay keeps the existing `/pcaps` mount mapping. Restrict write access to the capture directory and its parent directories to trusted operators.
+
 ## Resources
 
 | Resource | URI | Description |
