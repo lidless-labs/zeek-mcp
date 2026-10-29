@@ -42,11 +42,11 @@ function execFileCommand(
 
 // Validate script names to prevent command/path injection.
 // Strict allowlist: alphanumerics plus . _ - and / for namespaced script paths.
-// Reject "/" prefixes and any ".." traversal segment so a script arg can never
+// Reject option-shaped names and "/" prefixes and any ".." traversal segment so a script arg can never
 // escape Zeek's script search path or smuggle shell metacharacters.
 function validateScriptName(script: string): boolean {
   if (!/^[A-Za-z0-9._\-/]+$/.test(script)) return false;
-  if (script.startsWith("/")) return false;
+  if (script.startsWith("/") || script.startsWith("-")) return false;
   if (script.split("/").some((seg) => seg === "..")) return false;
   return true;
 }
@@ -128,7 +128,7 @@ export function registerPcapTools(server: McpServer): void {
           for (const script of params.scripts) {
             if (!validateScriptName(script)) {
               return {
-                content: [{ type: "text" as const, text: `Invalid script name: "${script}". Only alphanumeric, underscore, dash, dot, and slash allowed.` }],
+                content: [{ type: "text" as const, text: `Invalid script name: "${script}". Use a relative script name with alphanumeric, underscore, dash, dot, or slash characters, and no leading dash.` }],
                 isError: true,
               };
             }
@@ -140,7 +140,7 @@ export function registerPcapTools(server: McpServer): void {
         // After resolution the path MUST live inside pcapDir or we reject it, so a
         // caller can never read or feed Zeek an arbitrary file on the host.
         const resolvedDir = path.resolve(config.pcapDir);
-        const pcapPath = path.isAbsolute(params.filename)
+        let pcapPath = path.isAbsolute(params.filename)
           ? path.resolve(params.filename)
           : path.resolve(resolvedDir, params.filename);
 
@@ -158,6 +158,30 @@ export function registerPcapTools(server: McpServer): void {
           };
         }
 
+        // The host capture root is mounted at /pcaps in Docker. Validate the
+        // same canonical regular file in both modes before starting any process.
+        const canonicalRoot = fs.realpathSync(resolvedDir);
+        if (!fs.statSync(canonicalRoot).isDirectory()) {
+          return {
+            content: [{ type: "text" as const, text: "PCAP root must be a directory." }],
+            isError: true,
+          };
+        }
+        pcapPath = fs.realpathSync(pcapPath);
+        const relative = path.relative(canonicalRoot, pcapPath);
+        if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+          return {
+            content: [{ type: "text" as const, text: "Path traversal blocked: capture resolves outside the allowed PCAP directory." }],
+            isError: true,
+          };
+        }
+        if (!fs.statSync(pcapPath).isFile()) {
+          return {
+            content: [{ type: "text" as const, text: "PCAP input must be a regular file." }],
+            isError: true,
+          };
+        }
+
         // Create output directory for this analysis
         const analysisId = `pcap-${Date.now()}`;
         const outputDir = path.join(config.outputDir, analysisId);
@@ -167,7 +191,7 @@ export function registerPcapTools(server: McpServer): void {
           // element to `docker` (no inner `sh -c`, no shell string), so a hostile
           // filename or script name can never be interpreted as shell syntax.
           const containerWorkDir = `/tmp/${analysisId}`;
-          const containerPcapPath = `/pcaps/${path.basename(pcapPath)}`;
+          const containerPcapPath = path.posix.join("/pcaps", ...relative.split(path.sep));
           const scripts = params.scripts ?? [];
 
           // Create the per-analysis working directory.

@@ -1,4 +1,5 @@
 import packageJson from "../package.json";
+import { protectTelemetryMessage } from "./telemetry.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getConfig } from "./config.js";
@@ -80,6 +81,6 @@ const transport = new StdioServerTransport();
         if (t?.outputSchema) delete t.outputSchema.$schema;
       }
     }
-    return __send(message);
+    return __send(protectTelemetryMessage(message));
   };
 await server.connect(transport);

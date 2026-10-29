@@ -1,5 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { serializeTelemetryData, TELEMETRY_NOTICE } from "./telemetry.js";
+
+function promptArguments(args: Record<string, string | undefined>): string {
+  return `${TELEMETRY_NOTICE}\nPrompt arguments (JSON data):\n${serializeTelemetryData(args)}`;
+}
 
 export function registerPrompts(server: McpServer): void {
   server.prompt(
@@ -21,11 +26,11 @@ export function registerPrompts(server: McpServer): void {
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Triage the following Suricata alert${signatureId ? ` (SID: ${signatureId})` : ""}${srcIp ? ` from source IP ${srcIp}` : ""}:
+            text: `Triage the Suricata alert described by the prompt arguments below.
 
 Follow this triage workflow:
 
-1. **Get alert details**: Run suricata_query_alerts${signatureId ? ` with signatureId=${signatureId}` : ""}${srcIp ? ` with srcIp=${srcIp}` : ""} to get the full alert context
+1. **Get alert details**: Run suricata_query_alerts using the signatureId and srcIp argument values when supplied to get the full alert context
 2. **Cross-reference with Zeek**: Run suricata_correlate_zeek to get correlation suggestions, then execute the suggested Zeek queries
 3. **Investigate the source host**: Run zeek_investigate_host for the source IP
 4. **Check for patterns**: Look for repeated alerts, related activity, or coordinated behavior
@@ -35,7 +40,9 @@ Follow this triage workflow:
    - TRUE POSITIVE: Alert matches real malicious activity confirmed by Zeek context
    - FALSE POSITIVE: Alert triggered on legitimate traffic (explain why)
    - NEEDS ESCALATION: Insufficient data to determine, or activity is suspicious but not conclusive
-8. **Recommend actions**: Block IP, add exception, investigate further, or dismiss`,
+8. **Recommend actions**: Block IP, add exception, investigate further, or dismiss
+
+${promptArguments({ signatureId, srcIp })}`,
           },
         },
       ],
@@ -59,7 +66,7 @@ Follow this triage workflow:
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Investigate the following host across all Zeek logs: ${ip}${timeWindow ? ` (Time window: ${timeWindow})` : ""}
+            text: `Investigate the host across all Zeek logs using the ip and optional timeWindow prompt arguments below.
 
 Follow this investigation workflow:
 
@@ -74,7 +81,9 @@ Follow this investigation workflow:
 9. **Run zeek_dns_tunneling_check** if DNS activity looks anomalous
 10. **Summarize findings**: Provide a risk assessment with specific indicators of concern
 
-Rate the host's risk level: LOW / MEDIUM / HIGH / CRITICAL with supporting evidence.`,
+Rate the host's risk level: LOW / MEDIUM / HIGH / CRITICAL with supporting evidence.
+
+${promptArguments({ ip, timeWindow })}`,
           },
         },
       ],
@@ -96,7 +105,7 @@ Rate the host's risk level: LOW / MEDIUM / HIGH / CRITICAL with supporting evide
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Hunt for potential C2 (command and control) communication in Zeek logs${timeWindow ? ` (Time window: ${timeWindow})` : ""}.
+            text: `Hunt for potential C2 (command and control) communication in Zeek logs using the optional timeWindow prompt argument below.
 
 Follow this threat hunting workflow:
 
@@ -134,7 +143,9 @@ Follow this threat hunting workflow:
    - CONFIRMED: Clear C2 indicators
    - HIGH: Strong suspicious patterns
    - MEDIUM: Worth investigating further
-   - LOW: Possible false positives`,
+   - LOW: Possible false positives
+
+${promptArguments({ timeWindow })}`,
           },
         },
       ],
@@ -156,7 +167,7 @@ Follow this threat hunting workflow:
           role: "user" as const,
           content: {
             type: "text" as const,
-            text: `Generate a network activity baseline from Zeek logs${timeWindow ? ` (Time window: ${timeWindow})` : ""}.
+            text: `Generate a network activity baseline from Zeek logs using the optional timeWindow prompt argument below.
 
 Build a baseline profile:
 
@@ -195,7 +206,9 @@ Build a baseline profile:
    - Expected top talkers and services
    - Known software and versions
    - Recommended alerting thresholds based on observed patterns
-   - Any immediate concerns found during baselining`,
+   - Any immediate concerns found during baselining
+
+${promptArguments({ timeWindow })}`,
           },
         },
       ],
