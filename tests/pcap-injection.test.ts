@@ -175,6 +175,60 @@ describe("pcap_analyze command injection / path traversal", () => {
     expect(replay?.args.slice(-3)).toEqual(["-r", "/pcaps/capture.pcap", "protocols/ssl/log-hostcerts-only"]);
   });
 
+  it.each(["file", "directory"])("blocks an escaping %s symlink before any Docker process", async (kind) => {
+    process.env.ZEEK_CONTAINER = "zeek";
+    const outside = fs.mkdtempSync(path.join(process.cwd(), "test-data", "pcap-outside-"));
+    try {
+      fs.writeFileSync(path.join(outside, "secret.pcap"), "x");
+      fs.symlinkSync(kind === "file" ? path.join(outside, "secret.pcap") : outside, path.join(tmpPcapDir, "link"));
+      const result = await getAnalyze()({ confirm: true, filename: kind === "file" ? "link" : "link/secret.pcap", timeoutSeconds: 10 });
+      expect(JSON.stringify(result)).toContain("outside the allowed PCAP directory");
+      expect(execFileCalls).toHaveLength(0);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["", "zeek"])("requires a directory capture root in mode %s before any process", async (container) => {
+    process.env.ZEEK_CONTAINER = container;
+    const capture = path.join(tmpPcapDir, "capture.pcap");
+    fs.writeFileSync(capture, "x");
+    process.env.PCAP_DIR = capture;
+    const result = await getAnalyze()({ confirm: true, filename: capture, timeoutSeconds: 10 });
+    expect(JSON.stringify(result)).toContain("PCAP root must be a directory");
+    expect(execFileCalls).toHaveLength(0);
+  });
+
+  it.each([".", "directory.pcap"])("rejects Docker directory input %s before any process", async (filename) => {
+    process.env.ZEEK_CONTAINER = "zeek";
+    fs.mkdirSync(path.join(tmpPcapDir, "directory.pcap"));
+    const result = await getAnalyze()({ confirm: true, filename, timeoutSeconds: 10 });
+    expect(JSON.stringify(result)).toContain("regular file");
+    expect(execFileCalls).toHaveLength(0);
+  });
+
+  it("maps the canonical nested capture relative to a symlinked Docker mount root", async () => {
+    process.env.ZEEK_CONTAINER = "zeek";
+    fs.mkdirSync(path.join(tmpPcapDir, "nested"));
+    fs.writeFileSync(path.join(tmpPcapDir, "nested", "capture.pcap"), "nested");
+    fs.writeFileSync(path.join(tmpPcapDir, "capture.pcap"), "different capture");
+    fs.symlinkSync(path.join(tmpPcapDir, "nested", "capture.pcap"), path.join(tmpPcapDir, "alias.pcap"));
+    const rootAlias = tmpPcapDir + "-alias";
+    fs.symlinkSync(tmpPcapDir, rootAlias);
+    process.env.PCAP_DIR = rootAlias;
+    try {
+      for (const filename of ["nested/capture.pcap", "alias.pcap"]) {
+        execFileCalls.length = 0;
+        const result = await getAnalyze()({ confirm: true, filename, timeoutSeconds: 10 }) as { isError?: boolean };
+        expect(result.isError).not.toBe(true);
+        const replay = execFileCalls.find((call) => call.args.includes("-r"));
+        expect(replay?.args.slice(-2)).toEqual(["-r", "/pcaps/nested/capture.pcap"]);
+      }
+    } finally {
+      fs.unlinkSync(rootAlias);
+    }
+  });
+
   it("rejects absolute paths outside PCAP_DIR", async () => {
     const analyze = getAnalyze();
     const res = await analyze({ confirm: true, filename: "/etc/passwd", timeoutSeconds: 10 });

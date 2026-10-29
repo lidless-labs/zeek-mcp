@@ -158,24 +158,28 @@ export function registerPcapTools(server: McpServer): void {
           };
         }
 
-        if (!config.zeekContainer) {
-          // Resolve symlinks before host replay. Keep Docker's existing /pcaps
-          // mount mapping independent of host filesystem canonical paths.
-          const canonicalRoot = fs.realpathSync(resolvedDir);
-          pcapPath = fs.realpathSync(pcapPath);
-          const relative = path.relative(canonicalRoot, pcapPath);
-          if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
-            return {
-              content: [{ type: "text" as const, text: "Path traversal blocked: capture resolves outside the allowed PCAP directory." }],
-              isError: true,
-            };
-          }
-          if (!fs.statSync(pcapPath).isFile()) {
-            return {
-              content: [{ type: "text" as const, text: "PCAP input must be a regular file." }],
-              isError: true,
-            };
-          }
+        // The host capture root is mounted at /pcaps in Docker. Validate the
+        // same canonical regular file in both modes before starting any process.
+        const canonicalRoot = fs.realpathSync(resolvedDir);
+        if (!fs.statSync(canonicalRoot).isDirectory()) {
+          return {
+            content: [{ type: "text" as const, text: "PCAP root must be a directory." }],
+            isError: true,
+          };
+        }
+        pcapPath = fs.realpathSync(pcapPath);
+        const relative = path.relative(canonicalRoot, pcapPath);
+        if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+          return {
+            content: [{ type: "text" as const, text: "Path traversal blocked: capture resolves outside the allowed PCAP directory." }],
+            isError: true,
+          };
+        }
+        if (!fs.statSync(pcapPath).isFile()) {
+          return {
+            content: [{ type: "text" as const, text: "PCAP input must be a regular file." }],
+            isError: true,
+          };
         }
 
         // Create output directory for this analysis
@@ -187,7 +191,7 @@ export function registerPcapTools(server: McpServer): void {
           // element to `docker` (no inner `sh -c`, no shell string), so a hostile
           // filename or script name can never be interpreted as shell syntax.
           const containerWorkDir = `/tmp/${analysisId}`;
-          const containerPcapPath = `/pcaps/${path.basename(pcapPath)}`;
+          const containerPcapPath = path.posix.join("/pcaps", ...relative.split(path.sep));
           const scripts = params.scripts ?? [];
 
           // Create the per-analysis working directory.
