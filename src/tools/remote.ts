@@ -22,6 +22,32 @@ export function remoteFailureResponse(service: "MISP" | "TheHive", error: unknow
   };
 }
 
+// A failed acknowledgement can follow an applied write. Preserve only validated
+// local progress and require reconciliation rather than suggesting a retry.
+export function remoteMutationFailureResponse(
+  service: "MISP" | "TheHive",
+  error: unknown,
+  progress: {
+    eventId?: string | number;
+    alertId?: string;
+    caseId?: string;
+    confirmedTaskCount?: number;
+    confirmedObservableCount?: number;
+    unconfirmedOperation?: { kind: "alert" | "case" | "task" | "observable"; index?: number };
+  } = {},
+) {
+  return {
+    content: [{ type: "text" as const, text: remoteOutput({
+      success: false,
+      outcome: progress.eventId !== undefined || progress.alertId || progress.caseId ? "partial" : "unknown",
+      ...progress,
+      ...remoteFailureDetails(error),
+      message: `${service} write outcome is unconfirmed. Reconcile remote state before retrying. Do not repeat the create operation automatically.`,
+    }) }],
+    isError: true,
+  };
+}
+
 // Reject excessive structure before callers map service objects. Model output
 // has a separate aggregate encoded-byte budget, including caller-supplied data.
 function checkDataBudget(value: unknown, status: number): void {
@@ -49,6 +75,7 @@ export async function requestRemoteJson(
   url: string,
   options: RequestInit,
   timeoutMs = 30000,
+  project?: (data: unknown, status: number) => unknown,
 ): Promise<{ status: number; data: unknown }> {
   const controller = new AbortController();
   let status = 0;
@@ -101,6 +128,9 @@ export async function requestRemoteJson(
       } catch {
         throw new RemoteRequestFailure("invalid-json", status);
       }
+      // Endpoint projections read a fixed set of identity fields after the
+      // byte-bounded parse. Unused create-response arrays are never traversed.
+      if (project) data = project(data, status);
       checkDataBudget(data, status);
       return { status, data };
     })()]);

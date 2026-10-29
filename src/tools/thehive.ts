@@ -1,4 +1,4 @@
-import { requestRemoteJson, remoteOutput, remoteFailureResponse, RemoteRequestFailure } from "./remote.js";
+import { requestRemoteJson, remoteOutput, remoteFailureResponse, remoteMutationFailureResponse, RemoteRequestFailure } from "./remote.js";
 import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -29,12 +29,24 @@ function getInsecureAgent(): Agent {
   return insecureTheHiveAgent;
 }
 
+function projectCreatedParent(data: unknown, status: number): unknown {
+  const parent = data as { _id?: unknown; number?: unknown } | null;
+  if (typeof parent?._id !== "string" || !/^[A-Za-z0-9_~-]{1,128}$/.test(parent._id)) {
+    throw new RemoteRequestFailure("data-limit", status);
+  }
+  return {
+    _id: parent._id,
+    number: typeof parent.number === "number" && Number.isSafeInteger(parent.number) && parent.number >= 0
+      ? parent.number : undefined,
+  };
+}
+
 async function theHiveRequest(
   config: TheHiveConfig,
   method: string,
   path: string,
   body?: unknown,
-  timeoutMs = 30000,
+  responseKind: "search" | "parent" | "child" = "search",
 ): Promise<{ status: number; data: unknown }> {
   const url = `${config.url}${path}`;
   const headers: Record<string, string> = {
@@ -48,7 +60,8 @@ async function theHiveRequest(
     body: body ? JSON.stringify(body) : undefined,
   };
   if (!config.verifySsl) fetchOptions.dispatcher = getInsecureAgent();
-  return requestRemoteJson(url, fetchOptions, timeoutMs);
+  return requestRemoteJson(url, fetchOptions, 30000,
+    responseKind === "parent" ? projectCreatedParent : responseKind === "child" ? () => null : undefined);
 }
 
 export function registerTheHiveTools(server: McpServer): void {
@@ -83,6 +96,10 @@ export function registerTheHiveTools(server: McpServer): void {
     async (params) => {
       const gate = checkMutationAllowed(allowMutation, params, "thehive_create_alert");
       if (!gate.allowed) return gate.response;
+      let alertId: string | undefined;
+      const confirmedTaskCount = 0;
+      let confirmedObservableCount = 0;
+      let unconfirmedOperation: { kind: "alert" | "observable"; index?: number } = { kind: "alert" };
       try {
         if (!config.apiKey) {
           return {
@@ -103,18 +120,18 @@ export function registerTheHiveTools(server: McpServer): void {
           tags: params.tags ?? ["nids", "zeek-mcp"],
         };
 
-        const result = await theHiveRequest(config, "POST", "/api/v1/alert", alert);
-
-        if (result.status !== 201) {
-          return remoteFailureResponse("TheHive", new RemoteRequestFailure("http", result.status));
-        }
+        const result = await theHiveRequest(config, "POST", "/api/v1/alert", alert, "parent");
 
         const alertData = result.data as Record<string, unknown>;
-        const alertId = alertData._id as string;
+        alertId = alertData._id as string;
+        if (result.status !== 201) {
+          throw new RemoteRequestFailure("http", result.status);
+        }
 
         // Add observables if provided
         if (params.observables && params.observables.length > 0) {
           for (const obs of params.observables) {
+            unconfirmedOperation = { kind: "observable", index: confirmedObservableCount };
             await theHiveRequest(config, "POST", `/api/v1/alert/${alertId}/observable`, {
               dataType: obs.dataType,
               data: obs.data,
@@ -123,7 +140,8 @@ export function registerTheHiveTools(server: McpServer): void {
               ioc: obs.ioc ?? false,
               sighted: obs.sighted ?? true,
               tags: obs.tags ?? [],
-            });
+            }, "child");
+            confirmedObservableCount++;
           }
         }
 
@@ -141,7 +159,9 @@ export function registerTheHiveTools(server: McpServer): void {
           }],
         };
       } catch (error) {
-        return remoteFailureResponse("TheHive", error);
+        return remoteMutationFailureResponse("TheHive", error, {
+          alertId, confirmedTaskCount, confirmedObservableCount, unconfirmedOperation,
+        });
       }
     },
   );
@@ -175,6 +195,10 @@ export function registerTheHiveTools(server: McpServer): void {
     async (params) => {
       const gate = checkMutationAllowed(allowMutation, params, "thehive_create_case");
       if (!gate.allowed) return gate.response;
+      let caseId: string | undefined;
+      let confirmedTaskCount = 0;
+      let confirmedObservableCount = 0;
+      let unconfirmedOperation: { kind: "case" | "task" | "observable"; index?: number } = { kind: "case" };
       try {
         if (!config.apiKey) {
           return {
@@ -192,29 +216,31 @@ export function registerTheHiveTools(server: McpServer): void {
           tags: params.tags ?? ["nids", "zeek-mcp"],
         };
 
-        const result = await theHiveRequest(config, "POST", "/api/v1/case", caseBody);
-
-        if (result.status !== 201) {
-          return remoteFailureResponse("TheHive", new RemoteRequestFailure("http", result.status));
-        }
+        const result = await theHiveRequest(config, "POST", "/api/v1/case", caseBody, "parent");
 
         const caseData = result.data as Record<string, unknown>;
-        const caseId = caseData._id as string;
+        caseId = caseData._id as string;
+        if (result.status !== 201) {
+          throw new RemoteRequestFailure("http", result.status);
+        }
 
         // Add tasks
         if (params.tasks) {
           for (const task of params.tasks) {
+            unconfirmedOperation = { kind: "task", index: confirmedTaskCount };
             await theHiveRequest(config, "POST", `/api/v1/case/${caseId}/task`, {
               title: task.title,
               description: task.description,
               group: task.group ?? "default",
-            });
+            }, "child");
+            confirmedTaskCount++;
           }
         }
 
         // Add observables
         if (params.observables) {
           for (const obs of params.observables) {
+            unconfirmedOperation = { kind: "observable", index: confirmedObservableCount };
             await theHiveRequest(config, "POST", `/api/v1/case/${caseId}/observable`, {
               dataType: obs.dataType,
               data: obs.data,
@@ -222,7 +248,8 @@ export function registerTheHiveTools(server: McpServer): void {
               tlp: obs.tlp ?? params.tlp,
               ioc: obs.ioc ?? false,
               tags: obs.tags ?? [],
-            });
+            }, "child");
+            confirmedObservableCount++;
           }
         }
 
@@ -241,7 +268,9 @@ export function registerTheHiveTools(server: McpServer): void {
           }],
         };
       } catch (error) {
-        return remoteFailureResponse("TheHive", error);
+        return remoteMutationFailureResponse("TheHive", error, {
+          caseId, confirmedTaskCount, confirmedObservableCount, unconfirmedOperation,
+        });
       }
     },
   );

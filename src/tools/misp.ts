@@ -1,4 +1,4 @@
-import { requestRemoteJson, remoteOutput, remoteFailureResponse, remoteFailureDetails, RemoteRequestFailure } from "./remote.js";
+import { requestRemoteJson, remoteOutput, remoteFailureResponse, remoteFailureDetails, remoteMutationFailureResponse, RemoteRequestFailure } from "./remote.js";
 import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -30,11 +30,26 @@ function getInsecureAgent(): Agent {
   return insecureMispAgent;
 }
 
+function projectCreatedEvent(data: unknown, status: number): unknown {
+  const event = (data as { Event?: { id?: unknown; uuid?: unknown } } | null)?.Event;
+  const id = event?.id;
+  if (!(typeof id === "string" && /^[1-9][0-9]{0,19}$/.test(id))
+    && !(typeof id === "number" && Number.isSafeInteger(id) && id > 0)) {
+    throw new RemoteRequestFailure("data-limit", status);
+  }
+  // An invalid optional field must not erase a known event identity.
+  const uuid = typeof event?.uuid === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.uuid)
+    ? event.uuid : undefined;
+  return { Event: { id, uuid } };
+}
+
 async function mispRequest(
   config: MispConfig,
   method: string,
   path: string,
   body?: unknown,
+  createdEvent = false,
 ): Promise<{ status: number; data: unknown }> {
   const url = `${config.url}${path}`;
   const headers: Record<string, string> = {
@@ -53,7 +68,7 @@ async function mispRequest(
     fetchOptions.dispatcher = getInsecureAgent();
   }
 
-  return requestRemoteJson(url, fetchOptions);
+  return requestRemoteJson(url, fetchOptions, 30000, createdEvent ? projectCreatedEvent : undefined);
 }
 
 export function registerMispTools(server: McpServer): void {
@@ -257,6 +272,7 @@ export function registerMispTools(server: McpServer): void {
     async (params) => {
       const gate = checkMutationAllowed(allowMutation, params, "misp_add_event");
       if (!gate.allowed) return gate.response;
+      let eventId: string | number | undefined;
       try {
         if (!config.apiKey) {
           return {
@@ -282,13 +298,13 @@ export function registerMispTools(server: McpServer): void {
           },
         };
 
-        const result = await mispRequest(config, "POST", "/events/add", event);
+        const result = await mispRequest(config, "POST", "/events/add", event, true);
 
+        const eventData = (result.data as { Event: { id: string | number; uuid?: string } }).Event;
+        eventId = eventData.id;
         if (result.status !== 200) {
-          return remoteFailureResponse("MISP", new RemoteRequestFailure("http", result.status));
+          throw new RemoteRequestFailure("http", result.status);
         }
-
-        const eventData = (result.data as { Event?: Record<string, unknown> })?.Event;
 
         return {
           content: [{
@@ -304,7 +320,7 @@ export function registerMispTools(server: McpServer): void {
           }],
         };
       } catch (error) {
-        return remoteFailureResponse("MISP", error);
+        return remoteMutationFailureResponse("MISP", error, { eventId });
       }
     },
   );
