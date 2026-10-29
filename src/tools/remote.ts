@@ -98,14 +98,15 @@ export async function requestRemoteJson(
     return await Promise.race([deadline, (async () => {
       response = await fetch(url, { ...options, signal: controller.signal });
       status = response.status;
-      if (!response.ok) throw new RemoteRequestFailure("http", status);
-      const length = response.headers.get("content-length");
-      if (length && Number(length) > 1048576) throw new RemoteRequestFailure("body-too-large", status);
-      // A fetch that resolves after abort must not resume reading its body.
+      // Outer cleanup may have run before fetch supplied a response. Cancel
+      // this late body before any status/size rejection can leave it behind.
       if (controller.signal.aborted) {
         cancel();
         throw new RemoteRequestFailure("deadline", status);
       }
+      if (!response.ok) throw new RemoteRequestFailure("http", status);
+      const length = response.headers.get("content-length");
+      if (length && Number(length) > 1048576) throw new RemoteRequestFailure("body-too-large", status);
       reader = response.body?.getReader();
       // A fixed buffer bounds retained memory independently of fragmentation.
       const body = Buffer.allocUnsafe(1048576);

@@ -549,6 +549,36 @@ describe.each(["MISP", "TheHive"])("%s bounded remote responses", (service) => {
     expect(cancelled).toBe(true);
   });
 
+  it.each([
+    { status: 503, headers: {} },
+    { status: 200, headers: { "Content-Length": "1048577" } },
+  ])("cancels a late response with status $status and headers $headers after returning by the deadline", async ({ status, headers }) => {
+    vi.useFakeTimers();
+    let resolveResponse!: (response: Response) => void;
+    let cancelled = false;
+    let reads = 0;
+    vi.stubGlobal("fetch", createMockFetch(() => new Promise((resolve) => { resolveResponse = resolve; })));
+    const call = await handler();
+    const pending = call();
+    await vi.advanceTimersByTimeAsync(30000);
+    const result = await pending;
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: deadline (status 0).`);
+    expect(fetchCalls[0].options.signal?.aborted).toBe(true);
+    // The body did not exist when outer deadline cleanup ran. Cancellation of
+    // this late body may itself hang, but must not resume reads or hold a timer.
+    resolveResponse(new Response(new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new TextEncoder().encode("secret")); },
+      cancel() { cancelled = true; return new Promise(() => {}); },
+    }, { highWaterMark: 0 }), { status, headers }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(cancelled).toBe(true);
+    expect(reads).toBe(0);
+    expect(fetchCalls).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(result.content[0].text).not.toContain("secret");
+  });
+
   it("removes request URLs and credentials from thrown transport errors", async () => {
     vi.stubGlobal("fetch", createMockFetch(async (url, options) => {
       throw new Error(url + " " + JSON.stringify(options.headers));
