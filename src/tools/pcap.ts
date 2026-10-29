@@ -42,11 +42,11 @@ function execFileCommand(
 
 // Validate script names to prevent command/path injection.
 // Strict allowlist: alphanumerics plus . _ - and / for namespaced script paths.
-// Reject "/" prefixes and any ".." traversal segment so a script arg can never
+// Reject option-shaped names and "/" prefixes and any ".." traversal segment so a script arg can never
 // escape Zeek's script search path or smuggle shell metacharacters.
 function validateScriptName(script: string): boolean {
   if (!/^[A-Za-z0-9._\-/]+$/.test(script)) return false;
-  if (script.startsWith("/")) return false;
+  if (script.startsWith("/") || script.startsWith("-")) return false;
   if (script.split("/").some((seg) => seg === "..")) return false;
   return true;
 }
@@ -128,7 +128,7 @@ export function registerPcapTools(server: McpServer): void {
           for (const script of params.scripts) {
             if (!validateScriptName(script)) {
               return {
-                content: [{ type: "text" as const, text: `Invalid script name: "${script}". Only alphanumeric, underscore, dash, dot, and slash allowed.` }],
+                content: [{ type: "text" as const, text: `Invalid script name: "${script}". Use a relative script name with alphanumeric, underscore, dash, dot, or slash characters, and no leading dash.` }],
                 isError: true,
               };
             }

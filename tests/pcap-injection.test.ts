@@ -116,6 +116,19 @@ describe("pcap_analyze command injection / path traversal", () => {
     expect(zeekCall!.args).toContain("protocols/ssl/log-hostcerts-only");
   });
 
+  it.each(["-e", "--help", "--", "-C", "-r", "-i"]) (
+    "rejects option-shaped script %s before host or Docker execution",
+    async (script) => {
+      fs.writeFileSync(path.join(tmpPcapDir, "capture.pcap"), "x");
+      for (const container of ["", "zeek"]) {
+        process.env.ZEEK_CONTAINER = container;
+        const result = await getAnalyze()({ confirm: true, filename: "capture.pcap", scripts: [script], timeoutSeconds: 10 });
+        expect(JSON.stringify(result)).toContain("Invalid script name");
+        expect(execFileCalls).toHaveLength(0);
+      }
+    },
+  );
+
   it("rejects absolute paths outside PCAP_DIR", async () => {
     const analyze = getAnalyze();
     const res = await analyze({ confirm: true, filename: "/etc/passwd", timeoutSeconds: 10 });
