@@ -718,3 +718,33 @@ describe("bounded mutation acknowledgements", () => {
     expect(fetchCalls).toHaveLength(3);
   });
 });
+
+
+describe("confirmed creation status", () => {
+  it.each(["alert", "case"])("stops after an asynchronous child acknowledgement for %s", async kind => {
+    vi.stubGlobal("fetch", createMockFetch(async url => url.endsWith(`/${kind}`)
+      ? jsonResponse(201, { _id: `${kind}-42` }) : jsonResponse(202, { accepted: true })));
+    const handlers = await registerTheHiveHandlers();
+    const result = await handlers[`thehive_create_${kind}`]({
+      confirm: true, title: "Detection", description: "Evidence",
+      tasks: kind === "case" ? [{ title: "Investigate" }, { title: "Later task" }] : undefined,
+      observables: [{ dataType: "domain", data: "first.example" }, { dataType: "domain", data: "later.example" }],
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      outcome: "partial", [`${kind}Id`]: `${kind}-42`, confirmedTaskCount: 0,
+      confirmedObservableCount: 0, unconfirmedOperation: { kind: kind === "case" ? "task" : "observable", index: 0 },
+      failure: "http", status: 202,
+    });
+    expect(fetchCalls).toHaveLength(2);
+  });
+
+  it.each(["misp_add_event", "thehive_create_alert", "thehive_create_case"])("preserves status204 for an empty %s parent response", async name => {
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(null, { status: 204 })));
+    const handlers = name === "misp_add_event" ? await registerMispHandlers() : await registerTheHiveHandlers();
+    const result = await handlers[name]({ confirm: true, info: "Detection", title: "Detection" });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ outcome: "unknown", failure: "data-limit", status: 204 });
+    expect(fetchCalls).toHaveLength(1);
+  });
+});

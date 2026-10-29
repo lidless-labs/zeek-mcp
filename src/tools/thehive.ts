@@ -60,8 +60,12 @@ async function theHiveRequest(
     body: body ? JSON.stringify(body) : undefined,
   };
   if (!config.verifySsl) fetchOptions.dispatcher = getInsecureAgent();
-  return requestRemoteJson(url, fetchOptions, 30000,
+  const result = await requestRemoteJson(url, fetchOptions, 30000,
     responseKind === "parent" ? projectCreatedParent : responseKind === "child" ? () => null : undefined);
+  if (responseKind === "child" && result.status !== 201) {
+    throw new RemoteRequestFailure("http", result.status);
+  }
+  return result;
 }
 
 export function registerTheHiveTools(server: McpServer): void {

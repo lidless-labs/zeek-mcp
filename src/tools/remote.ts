@@ -122,12 +122,13 @@ export async function requestRemoteJson(
         body.set(chunk.value, bytes);
         bytes += chunk.value.byteLength;
       }
-      if (bytes === 0 && status === 204) return { status, data: null };
-      let data: unknown;
-      try {
-        data = JSON.parse(body.subarray(0, bytes).toString("utf8"));
-      } catch {
-        throw new RemoteRequestFailure("invalid-json", status);
+      let data: unknown = null;
+      if (bytes !== 0 || status !== 204) {
+        try {
+          data = JSON.parse(body.subarray(0, bytes).toString("utf8"));
+        } catch {
+          throw new RemoteRequestFailure("invalid-json", status);
+        }
       }
       // Endpoint projections read a fixed set of identity fields after the
       // byte-bounded parse. Unused create-response arrays are never traversed.
