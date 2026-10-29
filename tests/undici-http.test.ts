@@ -124,8 +124,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       expect(fetchCalls.length).toBe(1);
       expect(fetchCalls[0].options.signal).toBeInstanceOf(AbortSignal);
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Error creating TheHive alert:");
-      expect(result.content[0].text.toLowerCase()).toMatch(/abort/);
+      expect(result.content[0].text).toBe("TheHive request failed: deadline (status 0).");
     });
 
     it("clears the timeout timer when fetch resolves before the deadline", async () => {
@@ -172,7 +171,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       expect(result.content[0].text).toContain("THEHIVE_API_KEY");
     });
 
-    it("maps non-201 HTTP responses to isError with status and body", async () => {
+    it("maps non-201 HTTP responses to a local failure class and numeric status", async () => {
       vi.stubGlobal(
         "fetch",
         createMockFetch(async () => jsonResponse(400, { message: "bad request" })),
@@ -186,11 +185,10 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("TheHive error (400)");
-      expect(result.content[0].text).toContain("bad request");
+      expect(result.content[0].text).toBe("TheHive request failed: http (status 400).");
     });
 
-    it("maps network failures to isError with the thrown message", async () => {
+    it("maps network failures to a local network failure", async () => {
       vi.stubGlobal(
         "fetch",
         createMockFetch(async () => {
@@ -206,7 +204,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("Error creating TheHive case: ECONNREFUSED");
+      expect(result.content[0].text).toBe("TheHive request failed: network (status 0).");
     });
 
     it("treats invalid JSON bodies as null data while still checking status", async () => {
@@ -223,7 +221,7 @@ describe("TheHive HTTP client (undici/fetch)", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("TheHive error (502): null");
+      expect(result.content[0].text).toBe("TheHive request failed: http (status 502).");
     });
 
     it("returns success JSON when the server responds 201", async () => {
@@ -339,7 +337,7 @@ describe("MISP HTTP client (undici/fetch)", () => {
       expect(result.content[0].text).toContain("MISP_API_KEY");
     });
 
-    it("maps non-200 HTTP responses to isError with status and body", async () => {
+    it("maps non-200 HTTP responses to a local failure class and numeric status", async () => {
       vi.stubGlobal(
         "fetch",
         createMockFetch(async () => jsonResponse(403, { errors: "Forbidden" })),
@@ -349,11 +347,10 @@ describe("MISP HTTP client (undici/fetch)", () => {
       const result = await handlers.misp_search_iocs({ value: "192.0.2.50" });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("MISP error (403)");
-      expect(result.content[0].text).toContain("Forbidden");
+      expect(result.content[0].text).toBe("MISP request failed: http (status 403).");
     });
 
-    it("maps network failures to isError with the thrown message", async () => {
+    it("maps network failures to a local network failure", async () => {
       vi.stubGlobal(
         "fetch",
         createMockFetch(async () => {
@@ -365,7 +362,7 @@ describe("MISP HTTP client (undici/fetch)", () => {
       const result = await handlers.misp_add_event({ confirm: true, info: "Unreachable host" });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toBe("Error creating MISP event: getaddrinfo ENOTFOUND");
+      expect(result.content[0].text).toBe("MISP request failed: network (status 0).");
     });
 
     it("returns success JSON when the server responds 200", async () => {
@@ -385,7 +382,7 @@ describe("MISP HTTP client (undici/fetch)", () => {
       expect(payload.eventId).toBe("99");
     });
 
-    it("swallows per-indicator network errors in bulk lookup without failing the tool", async () => {
+    it("reports per-indicator failures separately from clean IOC results", async () => {
       let call = 0;
       vi.stubGlobal(
         "fetch",
@@ -406,13 +403,12 @@ describe("MISP HTTP client (undici/fetch)", () => {
         ],
       });
 
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(true);
       const payload = JSON.parse(result.content[0].text);
       expect(payload.totalChecked).toBe(2);
       expect(payload.totalHits).toBe(1);
-      expect(payload.clean).toEqual(
-        expect.arrayContaining([expect.objectContaining({ value: "192.0.2.10" })]),
-      );
+      expect(payload.clean).toEqual([]);
+      expect(payload.failures).toEqual([{ index: 0, failure: "network", status: 0 }]);
     });
   });
 
@@ -457,5 +453,108 @@ describe("MISP HTTP client (undici/fetch)", () => {
       expect(headers.Accept).toBe("application/json");
       expect(headers["Content-Type"]).toBe("application/json");
     });
+  });
+});
+
+describe.each(["MISP", "TheHive"])("%s bounded remote responses", (service) => {
+  async function handler() {
+    const handlers = service === "MISP" ? await registerMispHandlers() : await registerTheHiveHandlers();
+    return () => service === "MISP"
+      ? handlers.misp_search_iocs({ value: "192.0.2.50" })
+      : handlers.thehive_search_cases({ entityType: "case", limit: 20 });
+  }
+
+  it("cancels a non-success body without reading or disclosing secret-bearing data", async () => {
+    let cancelled = false;
+    let reads = 0;
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new TextEncoder().encode('secret=credential https://example.com/private')); controller.close(); },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { status: 503 })));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: http (status 503).`);
+    expect(cancelled).toBe(true);
+    expect(reads).toBe(0);
+  });
+
+  it("rejects an oversized Content-Length before consuming the body", async () => {
+    let cancelled = false;
+    let reads = 0;
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new TextEncoder().encode("{}")); controller.close(); },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { status: 200, headers: { "Content-Length": "1048577" } })));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: body-too-large (status 200).`);
+    expect(reads).toBe(0);
+    expect(cancelled).toBe(true);
+  });
+
+  it.each([undefined, "2"])("enforces the byte ceiling for chunked/lying length %s and cancels", async (length) => {
+    let cancelled = false;
+    let reads = 0;
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(new ReadableStream({
+      pull(controller) { reads++; controller.enqueue(new TextEncoder().encode('"' + "x".repeat(262144))); if (reads === 5) controller.close(); },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { status: 200, headers: length ? { "Content-Length": length } : {} })));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: body-too-large (status 200).`);
+    expect(reads).toBeLessThanOrEqual(5);
+    expect(cancelled).toBe(true);
+  });
+
+  it("keeps the deadline active while a response body stalls", async () => {
+    vi.useFakeTimers();
+    let cancelled = false;
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(new ReadableStream({
+      pull() { return new Promise(() => {}); },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { status: 200 })));
+    const call = await handler();
+    const pending = call();
+    await vi.advanceTimersByTimeAsync(30000);
+    const result = await pending;
+    expect(result.content[0].text).toBe(`${service} request failed: deadline (status 200).`);
+    expect(result.isError).toBe(true);
+    expect(cancelled).toBe(true);
+  });
+
+  it("removes request URLs and credentials from thrown transport errors", async () => {
+    vi.stubGlobal("fetch", createMockFetch(async (url, options) => {
+      throw new Error(url + " " + JSON.stringify(options.headers));
+    }));
+    const call = await handler();
+    const result = await call();
+    expect(result.content[0].text).toBe(`${service} request failed: network (status 0).`);
+    expect(result.isError).toBe(true);
+  });
+
+  it.each(["array", "key", "depth", "nodes"])("rejects excessive %s structure before mapping model output", async (kind) => {
+    const data = kind === "array" ? Array(101).fill({})
+      : kind === "key" ? { ["k".repeat(257)]: "secret" }
+      : kind === "nodes" ? Object.fromEntries(Array.from({ length: 2100 }, (_, i) => [String(i), i]))
+      : JSON.parse('{"nested":'.repeat(20) + '1' + '}'.repeat(20));
+    vi.stubGlobal("fetch", createMockFetch(async () => jsonResponse(200, data)));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: data-limit (status 200).`);
+  });
+
+  it("bounds the aggregate serialized success before returning model content", async () => {
+    const items = Array.from({ length: 80 }, (_, i) => ({ id: String(i), value: "x".repeat(10000), comment: "y".repeat(1000), title: "z".repeat(10000) }));
+    const data = service === "MISP" ? { response: { Attribute: items.map(({ id, value }) => ({ id, value })) } } : items.map(({ id, title }) => ({ _id: id, title }));
+    vi.stubGlobal("fetch", createMockFetch(async () => jsonResponse(200, data)));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).not.toBe(true);
+    expect(Buffer.byteLength(result.content[0].text)).toBeLessThanOrEqual(65536);
+    expect(() => JSON.parse(result.content[0].text)).not.toThrow();
   });
 });

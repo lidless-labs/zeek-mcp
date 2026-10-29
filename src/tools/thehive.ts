@@ -1,3 +1,4 @@
+import { requestRemoteJson, remoteOutput, remoteFailureResponse, RemoteRequestFailure } from "./remote.js";
 import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -41,27 +42,13 @@ async function theHiveRequest(
     "Content-Type": "application/json",
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const fetchOptions: RequestInit & { dispatcher?: Agent } = {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    };
-    if (!config.verifySsl) {
-      fetchOptions.dispatcher = getInsecureAgent();
-    }
-
-    const response = await fetch(url, fetchOptions);
-
-    const data = await response.json().catch(() => null);
-    return { status: response.status, data };
-  } finally {
-    clearTimeout(timeout);
-  }
+  const fetchOptions: RequestInit & { dispatcher?: Agent } = {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  };
+  if (!config.verifySsl) fetchOptions.dispatcher = getInsecureAgent();
+  return requestRemoteJson(url, fetchOptions, timeoutMs);
 }
 
 export function registerTheHiveTools(server: McpServer): void {
@@ -119,10 +106,7 @@ export function registerTheHiveTools(server: McpServer): void {
         const result = await theHiveRequest(config, "POST", "/api/v1/alert", alert);
 
         if (result.status !== 201) {
-          return {
-            content: [{ type: "text" as const, text: `TheHive error (${result.status}): ${JSON.stringify(result.data)}` }],
-            isError: true,
-          };
+          return remoteFailureResponse("TheHive", new RemoteRequestFailure("http", result.status));
         }
 
         const alertData = result.data as Record<string, unknown>;
@@ -146,21 +130,18 @@ export function registerTheHiveTools(server: McpServer): void {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               success: true,
               alertId,
               title: params.title,
               severity: params.severity,
               observableCount: params.observables?.length ?? 0,
               theHiveUrl: `${config.url}/index.html#!/alert/${alertId}/details`,
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error creating TheHive alert: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("TheHive", error);
       }
     },
   );
@@ -214,10 +195,7 @@ export function registerTheHiveTools(server: McpServer): void {
         const result = await theHiveRequest(config, "POST", "/api/v1/case", caseBody);
 
         if (result.status !== 201) {
-          return {
-            content: [{ type: "text" as const, text: `TheHive error (${result.status}): ${JSON.stringify(result.data)}` }],
-            isError: true,
-          };
+          return remoteFailureResponse("TheHive", new RemoteRequestFailure("http", result.status));
         }
 
         const caseData = result.data as Record<string, unknown>;
@@ -251,7 +229,7 @@ export function registerTheHiveTools(server: McpServer): void {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               success: true,
               caseId,
               caseNumber: caseData.number,
@@ -259,14 +237,11 @@ export function registerTheHiveTools(server: McpServer): void {
               taskCount: params.tasks?.length ?? 0,
               observableCount: params.observables?.length ?? 0,
               theHiveUrl: `${config.url}/index.html#!/case/${caseId}/details`,
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error creating TheHive case: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("TheHive", error);
       }
     },
   );
@@ -323,12 +298,14 @@ export function registerTheHiveTools(server: McpServer): void {
 
         const result = await theHiveRequest(config, "POST", endpoint, queryBody);
 
+        if (result.status !== 200) return remoteFailureResponse("TheHive", new RemoteRequestFailure("http", result.status));
+
         const items = (Array.isArray(result.data) ? result.data : []) as Array<Record<string, unknown>>;
 
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               entityType: params.entityType,
               count: items.length,
               results: items.map((item) => ({
@@ -343,14 +320,11 @@ export function registerTheHiveTools(server: McpServer): void {
                 updatedAt: item._updatedAt ? new Date(item._updatedAt as number).toISOString() : undefined,
                 description: String(item.description ?? "").slice(0, 200),
               })),
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error searching TheHive: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("TheHive", error);
       }
     },
   );

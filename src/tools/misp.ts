@@ -1,3 +1,4 @@
+import { requestRemoteJson, remoteOutput, remoteFailureResponse, remoteFailureDetails, RemoteRequestFailure } from "./remote.js";
 import { checkMutationAllowed } from "./mutation.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -52,10 +53,7 @@ async function mispRequest(
     fetchOptions.dispatcher = getInsecureAgent();
   }
 
-  const response = await fetch(url, fetchOptions);
-
-  const data = await response.json().catch(() => null);
-  return { status: response.status, data };
+  return requestRemoteJson(url, fetchOptions);
 }
 
 export function registerMispTools(server: McpServer): void {
@@ -94,10 +92,7 @@ export function registerMispTools(server: McpServer): void {
         const result = await mispRequest(config, "POST", "/attributes/restSearch", searchBody);
 
         if (result.status !== 200) {
-          return {
-            content: [{ type: "text" as const, text: `MISP error (${result.status}): ${JSON.stringify(result.data)}` }],
-            isError: true,
-          };
+          return remoteFailureResponse("MISP", new RemoteRequestFailure("http", result.status));
         }
 
         const responseData = result.data as { response?: { Attribute?: unknown[] } };
@@ -120,19 +115,16 @@ export function registerMispTools(server: McpServer): void {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               query: params.value,
               matchCount: matches.length,
               found: matches.length > 0,
               matches,
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error searching MISP: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("MISP", error);
       }
     },
   );
@@ -160,6 +152,7 @@ export function registerMispTools(server: McpServer): void {
           value: string;
           type?: string;
           context?: string;
+          failure?: ReturnType<typeof remoteFailureDetails>;
           found: boolean;
           matchCount: number;
           topMatch?: {
@@ -185,6 +178,7 @@ export function registerMispTools(server: McpServer): void {
 
             try {
               const result = await mispRequest(config, "POST", "/attributes/restSearch", searchBody);
+              if (result.status !== 200) throw new RemoteRequestFailure("http", result.status);
               const responseData = result.data as { response?: { Attribute?: unknown[] } };
               const attrs = (responseData?.response?.Attribute ?? []) as Array<Record<string, unknown>>;
 
@@ -203,13 +197,14 @@ export function registerMispTools(server: McpServer): void {
                   threatLevel: (attrs[0].Event as Record<string, unknown>)?.threat_level_id,
                 } : undefined,
               };
-            } catch {
+            } catch (error) {
               return {
                 value: indicator.value,
                 type: indicator.type,
                 context: indicator.context,
                 found: false,
                 matchCount: 0,
+                failure: remoteFailureDetails(error),
               };
             }
           });
@@ -223,20 +218,19 @@ export function registerMispTools(server: McpServer): void {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               totalChecked: results.length,
               totalHits: hits.length,
               hitRate: `${((hits.length / results.length) * 100).toFixed(1)}%`,
               hits,
-              clean: results.filter((r) => !r.found).map((r) => ({ value: r.value, type: r.type, context: r.context })),
-            }, null, 2),
+              failures: results.flatMap((r, index) => r.failure ? [{ index, ...r.failure }] : []),
+              clean: results.filter((r) => !r.found && !r.failure).map((r) => ({ value: r.value, type: r.type, context: r.context })),
+            }),
           }],
+          ...(results.some((r) => r.failure) ? { isError: true } : {}),
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error in bulk MISP lookup: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("MISP", error);
       }
     },
   );
@@ -291,10 +285,7 @@ export function registerMispTools(server: McpServer): void {
         const result = await mispRequest(config, "POST", "/events/add", event);
 
         if (result.status !== 200) {
-          return {
-            content: [{ type: "text" as const, text: `MISP error (${result.status}): ${JSON.stringify(result.data)}` }],
-            isError: true,
-          };
+          return remoteFailureResponse("MISP", new RemoteRequestFailure("http", result.status));
         }
 
         const eventData = (result.data as { Event?: Record<string, unknown> })?.Event;
@@ -302,21 +293,18 @@ export function registerMispTools(server: McpServer): void {
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({
+            text: remoteOutput({
               success: true,
               eventId: eventData?.id,
               uuid: eventData?.uuid,
               info: params.info,
               attributeCount: params.attributes?.length ?? 0,
               mispUrl: `${config.url}/events/view/${eventData?.id}`,
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
-        return {
-          content: [{ type: "text" as const, text: `Error creating MISP event: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
+        return remoteFailureResponse("MISP", error);
       }
     },
   );
