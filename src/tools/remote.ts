@@ -80,20 +80,24 @@ export async function requestRemoteJson(
         throw new RemoteRequestFailure("deadline", status);
       }
       reader = response.body?.getReader();
-      const chunks: Uint8Array[] = [];
+      // A fixed buffer bounds retained memory independently of fragmentation.
+      const body = Buffer.allocUnsafe(1048576);
       let bytes = 0;
+      let chunks = 0;
       while (reader) {
         const chunk = await reader.read();
         if (controller.signal.aborted) throw new RemoteRequestFailure("deadline", status);
         if (chunk.done) break;
+        if (++chunks > 65536 || bytes + chunk.value.byteLength > body.length) {
+          throw new RemoteRequestFailure("body-too-large", status);
+        }
+        body.set(chunk.value, bytes);
         bytes += chunk.value.byteLength;
-        if (bytes > 1048576) throw new RemoteRequestFailure("body-too-large", status);
-        chunks.push(chunk.value);
       }
       if (bytes === 0 && status === 204) return { status, data: null };
       let data: unknown;
       try {
-        data = JSON.parse(Buffer.concat(chunks, bytes).toString("utf8"));
+        data = JSON.parse(body.subarray(0, bytes).toString("utf8"));
       } catch {
         throw new RemoteRequestFailure("invalid-json", status);
       }

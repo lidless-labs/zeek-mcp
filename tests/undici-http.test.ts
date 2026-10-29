@@ -509,6 +509,25 @@ describe.each(["MISP", "TheHive"])("%s bounded remote responses", (service) => {
     expect(cancelled).toBe(true);
   });
 
+  it("bounds repeated empty chunks without retaining them indefinitely", async () => {
+    let reads = 0;
+    let cancelled = false;
+    vi.stubGlobal("fetch", createMockFetch(async () => new Response(new ReadableStream({
+      pull(controller) {
+        reads++;
+        if (reads <= 65537) controller.enqueue(new Uint8Array(0));
+        else { controller.enqueue(new TextEncoder().encode("[]")); controller.close(); }
+      },
+      cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { status: 200 })));
+    const call = await handler();
+    const result = await call();
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toBe(`${service} request failed: body-too-large (status 200).`);
+    expect(reads).toBeLessThanOrEqual(65537);
+    expect(cancelled).toBe(true);
+  });
+
   it("keeps the deadline active while a response body stalls", async () => {
     vi.useFakeTimers();
     let cancelled = false;
