@@ -26,14 +26,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "undici": "^7.28.0",
-    "zod": "^4.3.6"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.12"
   },
   "files": [
     "dist",
