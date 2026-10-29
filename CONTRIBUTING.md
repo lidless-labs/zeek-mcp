@@ -58,9 +58,7 @@ Tools are grouped by domain under `src/tools/<domain>.ts`, each file exporting a
 - Use conventional commit messages (`fix:`, `feat:`, `docs:`, `ci:`, `test:` and so on).
 - End every commit message with this trailer line:
 
-  ```
-  Co-Authored-By: Claude Duet <noreply@anthropic.com>
-  ```
+  `Co-Authored-By: Claude <noreply@anthropic.com>` <!-- content-guard: allow pii/email -->
 
 - Every pull request body says what changed, why, and the exact tests you ran (commands and results). Link the issue it fixes, for example `Fixes #10`.
 

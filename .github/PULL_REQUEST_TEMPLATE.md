@@ -29,4 +29,4 @@ Closes #
 - [ ] Updated the `## [Unreleased]` section of `CHANGELOG.md` for any user-visible effect
 - [ ] If tools changed, the tool count and tables in `README.md` are still accurate
 - [ ] No personal details, hostnames, real private IPs, account names, tokens, or unredacted absolute paths in code, tests, sample data, or this PR (use RFC 5737 `192.0.2.0/24` and generic hostnames in examples)
-- [ ] Conventional commit messages, each ending with `Co-Authored-By: Claude Duet <noreply@anthropic.com>`
+- [ ] Conventional commit messages, each ending with `Co-Authored-By: Claude <noreply@anthropic.com>` <!-- content-guard: allow pii/email -->
